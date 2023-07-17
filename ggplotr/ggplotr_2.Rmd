@@ -1,0 +1,288 @@
+---
+title: "Tutorial"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{js, echo=FALSE}
+var editor_font = "18px";   //修改代码区块的字体大小
+$(function() {
+   $('.ace_editor').each(function( index ) {
+     ace.edit(this).setFontSize(editor_font); 
+   });
+})
+```
+
+```{css, echo=FALSE}
+:root {
+    --body-font: 16px;      /*修改文本的字体大小*/
+}
+a:hover { color: red;  }
+body, .ace-tm {
+    /*font-family: "Ubuntu Mono", "NSimSun", "SimSun", "SimHei", monospace !important; */
+    font-size: var(--body-font) !important;
+}
+label { display: flex !important; align-items: center}
+label > span {padding-left: 5px; }
+label > input {top: unset !important; }
+.tutorialTitle { color: #91a01e; }
+h2 { color: #ed1f7f; font-size: 2em; }
+h3 { color: #005587; font-size: 1.5em; }
+details > summary { display: list-item; }
+details {
+    border: 1px solid #aaa;
+    border-radius: 0.2rem;
+    padding: 0.5em 0.5em 0;
+}
+div.two-col { display: flex;}
+div.two-col > div {flex: 50%; padding: 0 10px}
+```
+------------------------------------------------------------------------
+
+
+## 学习目标
+
+> - 学习怎么做探索性数据分析
+> - 学习生成条形图, 直方图, 箱图, 散点图, 折线图
+> - 学习如何对图形进一步修改: 缩放, 标签, 注释, 主题, 颜色
+
+```{r setup, echo=FALSE}
+pacman::p_load(here)
+source(here(getwd(), 'www', 'setup.R'))
+
+R <- fa('r-project')
+E <- fa('vial-circle-check')
+Q <- fa('circle-question')
+p <- ggplot(diamonds) + geom_boxplot(mapping = aes(x = cut, y = price))
+g <- ggplot(data = diamonds, mapping = aes(x = carat, y = price)) +
+  geom_smooth(mapping = aes(color = cut), se = FALSE) 
+h <- ggplot(data = mpg) + 
+  geom_jitter(mapping = aes(x = displ, y = hwy, color = hwy)) +
+  theme_bw()
+```
+
+---
+
+## 双变量
+
+### 箱图
+
+箱图展示了更多的统计信息, 包括中位数, 分位数, 奇异值等.
+
+```{r}
+ggplot(data = mpg) +
+  geom_boxplot(mapping = aes(x = class, y=hwy)) +
+  coord_flip() +
+  labs(title = "不同车型的高速油耗")
+```
+
+如果你不希望看到奇异值出现在图形中, 可以通过设定`outlier.alpha=0`来实现
+
+```{r outliers, exercise = TRUE}
+ggplot(data = diamonds) +
+  geom_boxplot(
+    mapping = aes(x = cut, y = price), 
+    outlier.shape  = 24, outlier.fill = "white", outlier.stroke = 0.25
+  )
+```
+
+:::: two-col
+::: {}
+当`x`轴是连续值的时候, 箱图并不会自动切分, 你必须定义`group`映射
+
+你可以使用如下三种将连续变量离散化的方式
+
+1. `cut_interval()` 使 n 个组具有相等的长度
+2. `cut_number()` 使 n 个组具有（大约）相等的观测
+3. `cut_width()` 使组的宽度固定为width
+:::
+::: {}
+```{r two-histogram, echo = FALSE}
+ggplot(data = diamonds) +
+  geom_boxplot(mapping = aes(x = carat, y = price))
+```
+:::
+::::
+
+```{r, collapse=T}
+x <- 1:10
+cut_interval(x, n = 3)
+cut_number(x, n = 5)
+cut_width(x, width = 3)
+```
+
+将钻石重量(克拉)进行离散化, 每0.5的区间作为一个箱, 得到箱型图
+
+```{r r4, exercise = TRUE, exercise.eval = TRUE}
+ggplot(data = diamonds) +
+  geom_boxplot(mapping = aes(x = carat, y = price))
+```
+
+```{r r4-solution}
+ggplot(data = diamonds) +
+  geom_boxplot(
+    mapping = aes(x = carat, y = price, group = cut_width(carat, width = 0.5))
+  )
+```
+
+另外两种表示离散-连续变量分布的函数也很常用, 他们是`geom_dotplot`和`geom_violin`
+
+- `geom_dotplot`: 如果将`binaxis`参数设置为"y", geom_dotplot() 将和 geom_boxplot() 一样给每组数据显示单独的分布
+- `geom_violin`: 则使用密度函数绘制`dotplot`的平滑轮廓版本. 数值多的地方小提琴就厚，数值少的地方就薄
+
+```{r, fig.align='center', fig.height=2}
+ggplot(data = mpg) +
+  geom_boxplot(mapping = aes(x = class, y = hwy)) +
+  coord_flip() + labs(x=NULL) -> a
+
+ggplot(data = mpg) +
+  geom_dotplot(
+    mapping = aes(x = class, y = hwy), binaxis = "y", 
+    dotsize = 0.5, binwidth = 1
+  ) +
+  coord_flip() + labs(x=NULL)  -> b
+
+ggplot(data = mpg) +
+  geom_violin(
+    mapping = aes(x = class, y = hwy),
+    draw_quantiles = c(0.25, 0.5, 0.75)
+  ) +
+  coord_flip() + labs(x=NULL)  -> c
+
+(a + b + c) + 
+  patchwork::plot_annotation( title = "不同车型的高速油耗")
+```
+
+### 热点图
+
+如果两个变量都是离散的话, 除了人为切分, 你也可以使用`geom_count`和`geom_tile`来绘制两个离散变量的交互
+
+- `geom_count`: 在两两交汇的地方计数, 统计频次, 点的大小反映出现次数, 越大代表出现次数越多
+- `geom_tile`: 使用填充色来反映计数频次的大小
+
+```{r, fig.height=2}
+ggplot(data = diamonds) +
+  geom_count(mapping = aes(x = cut, y = clarity)) -> a
+
+diamonds %>% count(cut, clarity) %>% 
+  ggplot() +
+  geom_tile(mapping = aes(x = cut, y = clarity, fill = n)) -> b
+
+(a + b) + 
+  patchwork::plot_annotation( title = "不同切工和不同纯度之间的关系")
+```
+
+### 散点图
+
+```{r, fig.align='center', fig.height=5}
+mpg %>% 
+  group_by(class) %>% 
+  summarise(cty = mean(cty), hwy = mean(hwy)) -> data
+
+a <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_point() + labs('point')
+
+b <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_jitter() + labs('jitter')
+
+c <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_text(mapping = aes(label = class)) + labs('text')
+
+d <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_label(mapping = aes(label = class)) + labs('label')
+
+
+((a + b) / (c + d)) + 
+  patchwork::plot_annotation( title = "高速油耗 ~ 城市油耗")
+```
+
+```{r bex7, exercise = TRUE}
+```
+
+我们可以添加`geom_smooth`用一根平滑曲线来拟合这些散点, 从而更好地分析趋势. 当数据集观测大于1000时, 他默认使用广义线性模型来拟合这些散点. 我们也可以在`method`参数那里规定拟合的算法.
+
+`r E`: 请给上面的散点增加一个线性拟合曲线(method=lm)
+
+```{r prep-data}
+mpg %>% 
+  group_by(class) %>% 
+  summarise(cty = mean(cty), hwy = mean(hwy)) -> data
+```
+
+```{r bex8, exercise = TRUE, exercise.setup="prep-data"}
+data
+```
+
+### 图层
+
+就像前面我们将散点和平滑拟合曲线组合, 图形的信息量立马丰富了许多一样. 通常一个ggplot都含有超过一个图层. 
+
+例如我们可以使用`ggrepel::geom_label_repel`函数来给数据点增加文本标签
+
+```{r bex9, exercise = TRUE, exercise.setup="prep-data"}
+ggplot(data) +
+    geom_point(mapping = aes(x = cty, y = hwy)) +
+    geom_smooth(mapping = aes(x = cty, y = hwy), method = lm) +
+    ggrepel::geom_label_repel(mapping = aes(x = cty, y = hwy, label = class))
+```
+
+我们需不需要在每一个图层里都指定`x`和`y`轴的映射信息呢? 答案是不需要, 他们可以直接继承ggplot()对象里的全局映射. 
+
+```r
+ggplot(data) + aes(x = cty, y = hwy)
+```
+
+- ggplot2 会将 ggplot() 函数中设置的任何映射视为全局映射. 图中的每一层都将继承并使用这些映射. 
+- ggplot2 会将 geom 函数中设置的任何映射视为局部映射. 只有该图层才会使用这些映射. 这个映射不会影响其他图层. 
+
+请把前面那个代码重写, 尽量继承全局映射而不要重复写局部映射
+
+
+```{r bex10, exercise = TRUE, exercise.setup="prep-data"}
+ggplot(data) +
+    geom_point(mapping = aes(x = cty, y = hwy)) +
+    geom_smooth(mapping = aes(x = cty, y = hwy), method = lm) +
+    ggrepel::geom_label_repel(mapping = aes(x = cty, y = hwy, label = class))
+```
+
+跟映射(AES)一样的还有数据(data), 我们也可以定义局部图层专属数据. 比如下面这个例子
+
+```{r local-data, exercise=TRUE}
+mpg3 <- filter(mpg, hwy > 40)
+ggplot(data = mpg, mapping = aes(x = displ, y = hwy)) +
+  geom_point() +
+  ggrepel::geom_label_repel(data = mpg3, mapping = aes(label = class))
+```
+
+### 折线图
+
+当`x`和`y`都是连续值的时候, 我们习惯用折线图反映两个连续变量之间的关系. 
+
+```{r, fig.align='center', fig.height=2}
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy)) + 
+  geom_line() -> a
+
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy)) + 
+  geom_step() -> b
+
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy)) + 
+  geom_area() -> c
+
+(a + b + c) + 
+  patchwork::plot_annotation( title = "发动机排量和高速油耗的关系")
+```
+
+你也可以添加分组映射(group)来给不同组别的观测绘制单独的折现, 不过建议使用颜色, 形状这种视觉冲击强的元素作为分组映射的目标
+
+```{r bex11, exercise=TRUE}
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy, group=drv)) + 
+  geom_line() -> a
+
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy, color=drv)) + 
+  geom_step() -> b
+
+(a + b) + 
+  patchwork::plot_annotation( title = "不同驱动类型: 发动机排量和高速油耗的关系")
+```
+
+

@@ -1,0 +1,25 @@
+{
+    "r.rpath.linux": "/usr/lib/R/bin/R",
+    "r.rterm.linux": "/home/dalab1/miniconda3/bin/radian",
+    "r.plot.useHttpgd": true,
+    "r.alwaysUseActiveTerminal": true,
+    "r.bracketedPaste": true,
+    "r.rmarkdown.enableCodeLens": false,
+    "r.lsp.diagnostics": false,
+    "[r]": {
+        "editor.formatOnSave": false,
+        "editor.defaultFormatter": "REditorSupport.r",
+    },
+    "terminal.integrated.enableMultiLinePasteWarning": false,
+    "python.defaultInterpreterPath": "/home/dalab1/miniconda3/envs/base/bin/python",
+    "files.exclude": {
+        "**/CVS": true,
+        "**/Thumbs.db": true,
+        "**/package-lock.json": true,
+        "**/node_modules": true,
+        "**/.github": false,
+        "**/scripts": false,
+        "*.{npmrc,yaml,cjs,prettierrc,git,svn,hg,DS_Store}": true,
+        "{site_libs,.quarto,.github}": true
+    },
+}

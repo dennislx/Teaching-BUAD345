@@ -1,0 +1,469 @@
+---
+title: "Tutorial"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{js, echo=FALSE}
+var editor_font = "18px";   //修改代码区块的字体大小
+$(function() {
+   $('.ace_editor').each(function( index ) {
+     ace.edit(this).setFontSize(editor_font); 
+   });
+})
+```
+
+```{css, echo=FALSE}
+:root {
+    --body-font: 16px;      /*修改文本的字体大小*/
+}
+a:hover { color: red;  }
+body, .ace-tm {
+    /*font-family: "Ubuntu Mono", "NSimSun", "SimSun", "SimHei", monospace !important; */
+    font-size: var(--body-font) !important;
+}
+label { display: flex !important; align-items: center}
+label > span {padding-left: 5px; }
+label > input {top: unset !important; }
+.tutorialTitle { color: #91a01e; }
+h2 { color: #ed1f7f; font-size: 2em; }
+h3 { color: #005587; font-size: 1.5em; }
+details > summary { display: list-item; }
+details {
+    border: 1px solid #aaa;
+    border-radius: 0.2rem;
+    padding: 0.5em 0.5em 0;
+}
+div.two-col { display: flex;}
+div.two-col > div {flex: 50%; padding: 0 10px}
+```
+------------------------------------------------------------------------
+
+
+## 学习目标
+
+> - 学习怎么做探索性数据分析
+> - 学习生成条形图, 直方图, 箱图, 散点图, 折线图
+> - 学习如何对图形进一步修改: 缩放, 标签, 注释, 主题, 颜色
+
+```{r setup, echo=FALSE}
+pacman::p_load(here)
+source(here(getwd(), 'www', 'setup.R'))
+
+R <- fa('r-project')
+E <- fa('vial-circle-check')
+Q <- fa('circle-question')
+p <- ggplot(diamonds) + geom_boxplot(mapping = aes(x = cut, y = price))
+g <- ggplot(data = diamonds, mapping = aes(x = carat, y = price)) +
+  geom_smooth(mapping = aes(color = cut), se = FALSE) 
+h <- ggplot(data = mpg) + 
+  geom_jitter(mapping = aes(x = displ, y = hwy, color = hwy)) +
+  theme_bw()
+```
+
+---
+
+## 样式
+
+### 放缩
+
+
+:::: two-col
+::: {}
+`r E`: 请生成一个箱图,
+
+1. 反映钻石的切工质量(x轴)同价格(y轴)之间的关系
+2. 将ggplot图像存储在变量`p`里
+3. 输入`p`
+
+:::
+::: {}
+```{r histogram, echo = FALSE}
+p
+```
+:::
+::::
+
+```{r bex12, exercise = TRUE}
+
+```
+
+现在几乎看不出中位数的差异, 为了更突出不同切工质量钻石价格中位数的差异, 我们可以放大`y`的下半部分. ggplot2提供了两种放大的方法: 
+
+- clipping: 先剪切, 再画图(只画仍然保留在缩放区域内的)
+- without clippting: 相当于拿放大镜看
+
+```{r, echo=FALSE}
+p + ylim(0, 7500) -> a
+p + coord_cartesian(ylim = c(0, 7500)) -> b
+
+(a + b) + patchwork::plot_annotation( title = "聚焦钻石价格在0~7500美金的箱图")
+```
+
+左边是用`ylim()`函数实现的, 右边使用`coord_cartesian(ylim=)`实现的. 使用`ylim`会在绘制箱图之前就删除掉缩放区域之外的数据, 所以绘制的箱图会失真. 更推荐右边的做法. 在使用右边的方法前, 先确定自己的坐标系是不是最为常见的笛卡尔坐标系. 
+
+```{r bex13, exercise = TRUE}
+
+```
+
+```{r data-update}
+p <- p + coord_cartesian(ylim = c(0, 7500))
+```
+
+### 标签
+
+使用`labs()`函数给图像添加标签
+
+```{r}
+g + geom_smooth(mapping = aes(color = cut), se = FALSE) + 
+  labs(
+    title = "标题",
+    subtitle = "副标题",
+    caption = "注释",
+    x = "X轴",
+    y = "y轴"
+  )
+```
+
+还可以使用`annotate()`在指定位置添加标签. 注意`annotate`函数需要指定添加的`geom`类型
+
+
+```{r bex14, exercise = TRUE}
+g + 
+  annotate("text", x = 3, y = 7800, label = "没有又好又便宜的钻石")
+```
+
+### 主题
+
+主题描述了绘图中非数据元素的样式: 包括轴, 比例尺, 图例等. 这里的知识点非常多, 我建议如果只是轻度使用, 可以调用别人写好的主题. 比如`ggplot2::theme_classic()`或者第三方的`ggthemes::theme_economist()`
+
+另一个非常好用的工具叫做[esquisse](https://github.com/dreamRs/esquisse)
+
+```{r echo=FALSE, fig.align='center'}
+add_img('gg_theme.gif')
+```
+
+## scales映射
+
+不同于aes映射是把变量映射到特定的图形元素, scales映射是把数据的值映射到某个元素空间的某个值. 听上去有点绕, 给一个例子
+
+```{r}
+df <- data.frame(x = 1:3, y = c('blue', 'green', 'blue'))
+```
+
+:::: two-col
+::: {}
+```{r l-scales, eval=F}
+df <- data.frame(x = 1:3, y = c('blue', 'green', 'blue'))
+ggplot(df, aes(x, y, color=y)) + geom_point()
+```
+:::
+::: {}
+```{r, echo=F}
+<<l-scales>>
+```
+:::
+::::
+
+`r Q`: 为什么这里的颜色不是蓝色和绿色呢? 这是因为他们只是调色板映射前的值, `r R`会调用`scales::hue_pal()`调色板将值转换为颜色
+
+```{r bex15, exercise = TRUE}
+# 这里n=2是因为数据只有两个离散的值
+scales::show_col(scales::hue_pal()(n=2))
+```
+
+你可以使用`scale_color_*`来更换调色板, 比如下面这个. `r Q`: 你可以尝试删掉`scale_color_grey`, 然后输入`scale_color_` + tab键看看都有哪些调色板可供选取
+
+```{r bex16, exercise = TRUE}
+g + scale_color_grey()
+```
+
+对于离散变量而言, 除了`scale_color_discrete()`的默认映射方式外, 最常用的就是`scale_color_brewer()`函数
+
+```{r}
+g + scale_color_brewer(palette = "Purples") -> a
+g + scale_color_brewer(palette = "Spectral") -> b
+
+a + b
+```
+
+如果是连续变量, 除了`scale_color_continuous()`的默认映射方式外, `scale_color_brewer`的连续值版本是`scale_color_distiller`
+
+```{r bex17, exercise = TRUE}
+h + scale_color_continous()
+```
+
+```{r}
+h + scale_color_distiller(palette = "Purples") -> a
+h + scale_color_distiller(palette = "Spectral") -> b
+
+a + b
+```
+
+除了和颜色相关的调色板之外, ggplot给每一种美学映射都添加了映射函数, 比如`scales::shape_pal`是默认的散点图形样式函数. 你还可以使用`scale_x_*`和`scale_y_*`函数来改变`x`和`y`的映射. `r R`提供了超过50种各式各样的"调色板", 我们不需要一个一个都记住, 只需要知道他们有统一规范的命名方式
+
+
+### 命名范式
+
+```
+`scale` + `_` + `<aes>` + `_` + `<type>` + `()`
+
+调整什么映射 → `<aes>` <br>
+映射函数的标签 → `<type>`
+```
+
+| 函数                       | 说明                                                  |
+|--------------------------------|--------------------------------------------------------------|
+| `scale_x_continuous()`         | 修改本身是连续变量的x轴           |
+| `scale_y_log10()`              | 本质上等于`scale_y_continuous(trans='log10')`           |
+| `scale_color_manual()`         | 自定义颜色           |
+| `scale_fill_gradient()`        | 自定义渐变填充色    |
+| `scale_shape_binned()`         | 将离散变量映射到六个易于辨别的形状      |
+| `scale_linetype_discrete()`    | 调整离散线条类型的设置          |
+
+: 完整列表请参考[这里](https://ggplot2.tidyverse.org/reference/#scales)
+
+比如我们使用`scale_x_continuous()`映射函数, 但是改变`x`轴的`names', `breaks`和`labels`
+
+```{r bex18, exercise = TRUE}
+g + scale_x_continuous(
+  name='X', 
+  breaks=c(2,4), 
+  labels=c('TWO', 'FOUR')
+)
+```
+
+## 图例
+
+包括定制图例在图像中的位置, 是否出现, 标题, 键值和标签等. 
+
+### 位置
+
+默认情况下图例被放在图像的右侧, 你可以通过`theme()`函数调整图例的位置(bottom/top/left/right)
+
+```{r bex19, exercise = TRUE}
+h + theme(legend.position = 'bottom')
+```
+
+`r Q`: 请将`theme()`函数放在你调用的第三方主题后保证这些设置不会被第三方主题覆盖
+
+### 类型
+
+可以通过`guides()`函数调整每一种图例的类型, 类型只有三种: 隐藏(none), 调色棒(colorbar)和标准图例(legend)
+
+```{r bex20, exercise = TRUE}
+h + guides(color = 'legend')
+```
+
+### 标题和键值
+
+通过调用特定`aes`元素的映射函数来改变标签和标题, 例如
+
+```{r bex21, exercise = TRUE}
+g + scale_color_brewer(name='切工', labels=c('很差','较差','一般','较好','很好'))
+```
+
+
+## 例子
+
+```{r head-gapminder}
+pacman::p_load(gapminder)
+glimpse(gapminder)
+```
+
+---
+
+1. 绘制`lifeExp ~ gdpPercap`的散点图
+ 
+```{r eg1, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp) +
+  geom_point() 
+```
+
+```{r g1, exercise = TRUE}
+```
+
+---
+
+2. 分别输出不同洲的散点图
+
+```{r eg2, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point()
+```
+
+
+```{r g2, exercise = TRUE}
+```
+
+---
+
+3. GDP数据全挤在一起了, 不是很好判断两者的关系, 请将`x`轴对数化
+
+```{r eg3, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point()
+```
+
+```{r g3, exercise = TRUE}
+```
+
+---
+
+4. 数据还是有点拥挤, 请使用`facet_wrap`分别输出不同洲的他散点图, 并且隐藏图例(facet已经包含了)
+
+```{r eg4, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point() +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g4, exercise = TRUE}
+```
+
+---
+
+5. 数据好像还是互相重叠, 把散点大小调小为0.25
+
+```{r eg5, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point(size = 0.25) +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g5, exercise = TRUE}
+```
+
+---
+
+6. 使用`geom_line`绘制折线图, 看看变化趋势
+
+```{r eg6, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_line() +
+  geom_point(size = 0.25) +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g6, exercise = TRUE}
+```
+
+---
+
+7. 按照不同洲, 绘制散点图, 提示: 在散点图映射中加入组别信息(group=country)
+
+```{r eg7, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g7, exercise = TRUE}
+```
+
+---
+
+8. 折线图也不能很好地反映趋势, 是不是我们需要考虑换一个`x`变量呢? 请把x映射改为`year`, 将y映射为`lifeExp`
+
+```{r eg8, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g8, exercise = TRUE}
+```
+
+---
+
+9. `x`轴的刻度根本看不清, 请将两个点之间的区间定义为25年, 从1950开始
+
+```{r eg9, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g9, exercise = TRUE}
+```
+
+---
+
+10. 请使用`geom_smooth`给它加一个线性拟合函数
+
+```{r eg10, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  geom_smooth() +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g10, exercise = TRUE}
+```
+
+---
+
+11. 突出线性拟合函数, 这里有两种做法: 一种是突出`geom_smooth`, 一种是不突出`geom_line`, 我们选择后者 (添加`color='grey', alpha = 0.5`)
+
+```{r eg11, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country), alpha = 0.5, color='grey') +
+  geom_point(size = 0.25) +
+  geom_smooth() +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g11, exercise = TRUE}
+```
+
+
+---
+
+最后我们撤掉散点图得到下面这个图
+
+```{r eg12, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = gdpPercap, color = continent) +
+  geom_line( aes(group = country), alpha = 0.5, color='grey') +
+  geom_smooth() +
+  scale_y_log10() +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+
+
+
+
+---

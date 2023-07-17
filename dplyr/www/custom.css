@@ -1,0 +1,58 @@
+a:hover {
+    color: red; /* darker color when hovering */
+}
+
+body, .ace-tm {
+    /* font-family: "Ubuntu Mono", "DejaVu Sans Mono", "Kaiti SC", "Kaiti TC", STKaiti, "Kai", BiauKai, "AR PL UKai CN", "AR PL UKai HK", "AR PL UKai TW", "AR PL UKai TW MBE", "AR PL KaitiM GB", KaiTi, KaiTi_GB2312, DFKai-SB, "TW\-Kai", monospace !important; */
+    font-size: 19px;
+}
+
+pre {
+    font-size: 16px;
+}
+
+.container-fluid {
+    margin-top: 2em;
+    padding-left: 20%;
+    padding-right: 20%;
+}
+
+
+
+#section-alex {
+    font-size: 0.8em;
+    border: 1px dotted #91a01e;
+    padding: 1em;
+    margin-top: 1em;
+}
+
+#section-alex h1,
+#section-alex h2,
+#section-alex h3,
+#section-alex h4 {
+  display: none;
+}
+
+.tutorialTitle {
+  color: #91a01e;
+}
+h2 {
+  color: #ed1f7f;
+  font-size: 2em;
+}
+h3 {
+  color: #005587;
+  font-size: 1.5em;
+}
+.popover{
+  max-width: 700px !important;
+}
+
+@media screen and (max-width: 767px){
+.topics{
+  background-image: url(chop-logo-nav.svg);
+  background-repeat: no-repeat;
+  background-size: 200px;
+  padding-top: 50px;
+  margin-top: 1em;
+}}

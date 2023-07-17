@@ -1,0 +1,699 @@
+---
+title: "学习使用`dplyr`"
+output:
+  learnr::tutorial:
+    progressive: false
+    allow_skip: true
+    css:
+      - "www/custom.css"
+runtime: shiny_prerendered
+description: >
+  学会如何使用`dplyr`这个包
+---
+
+```{r setup, include=FALSE}
+if(!require('pacman')){
+  install.packages('pacman')
+}
+pacman::p_load(learnr, nycflights13, countdown, dplyr)
+knitr::opts_chunk$set(error = TRUE) #出现错误不中断执行
+learnr::tutorial_options(
+  exercise.cap = 'dplyr'
+)
+```
+
+## 加载数据和依赖
+
+执行下面这段代码确保你可以顺利完成下面
+
+```{r, echo=F}
+countdown(minutes=10, seconds=0, update_every=1, start_immediately=F, top=0, font_size='1em')
+tutorial_options(
+  exercise.blanks='___+'
+)
+```
+
+### 安装依赖
+
+请在你的`console`中输入以下命令. 
+
+```{r, eval=F}
+if(!require('pacman')){
+  install.packages('pacman')
+}
+p_load(nycflights13, dplyr)
+```
+
+- `nycflights13` 是一个 R 语言数据包，提供了有关纽约市航班的数据集
+- `dplyr` 帮助我们对数据进行基本处理
+
+### 航班数据
+
+`nycflights13` 包含了有关纽约市 2013 年的航班数据. 包括了航班的起飞时间、到达时间、飞行距离、航空公司、飞机型号等信息
+
+```{r}
+# 如果你对glimpse()有疑问, 请在console中输入 ?glimpse
+flights %>% glimpse()
+```
+
+从这个快照我们可以得到以下基本信息
+
+- 数据包含 336,776 条航班记录, 以及19个变量, 也就是数据表的每一列
+- 注意数据中的`air_time`(飞行时间)的单位是分钟, 但是数据中`arr_time`(到达时间)和`dep_time`(出发时间)是24小时计时, 比如840代表早晨8:40
+- `distance`(飞行距离)的单位是miles(英里)而不是km(公里). 
+- 关于`carrier`(航司)的介绍, 请在console中输入`airlines`获取
+- 关于`tailnum`(飞机型号)的介绍, 请在console中输入`planes`获取
+- 关于`origin`(起飞机场)和`dest`(降落机场)的信息, 请在console中输入`airports`获取. 感兴趣的朋友可以通过这个数据画出全美的航班规划图
+- 对这个数据感兴趣的朋友可以通过在console中输入`weather`, 获得更多关于`origin`(起飞机场)的天气情况的信息
+
+```{r empty1, exercise=T, exercise.cap='explore', exercise.lines=5}
+head(flights, n=3) #查看前三行
+```
+
+```{r quiz-flight, echo = FALSE}
+quiz(caption = "小测",
+  question("在`flights` 数据集中，起飞时间采用特定的格式表示。例如，如果起飞时间是830，应如何解释它",
+           answer("上午8:30", correct=TRUE),
+           answer("下午8:30"),
+           answer("12:00 AM 之后8小时30分钟", correct=TRUE),
+           answer("12:00 PM 之后8小时30分钟"),
+           allow_retry = TRUE,
+           random_answer_order = TRUE
+  ),
+  question("请问`flights %>% glimpse()`中**%>%**的具体含义是",
+           answer("根据特定条件筛选航班"),
+           answer("对航班按升序或降序排列"),
+           answer("顺序执行多个操作, %>%前执行的结果将作为%>%后函数的第一个参数传入", correct=TRUE),
+           answer("等同于执行`glimpse(flights)`", correct=TRUE),
+           allow_retry = TRUE,
+           random_answer_order = TRUE
+  )
+)
+```
+
+## 用`filter`选择行
+
+```{r, echo=F}
+countdown(minutes=10, seconds=0, update_every=1, start_immediately=F, top=0, font_size='1em')
+```
+
+`filter()`允许根据某一列或几列具体的值来筛选行. 尤其是当某些行存在缺失值的时候, `filter()`函数能帮助我们自动过滤掉他们. 希望进一步加深对`filter()`理解的同学请阅读[_R for Data Science_](https://r4ds.had.co.nz/transform.html#filter-rows-with-filter)第5.2节
+
+例如，我们可以使用filter()选择在1月1日出发的flights中的每个航班
+
+
+```{r filter1, exercise = TRUE}
+flights %>% filter(month=1, ____)
+```
+
+```{r filter1-hint}
+flights %>% filter(month == 1, day == 1) 
+```
+
+这等同于我们之前学到的
+
+```{r filter2, exercise=TRUE}
+flights[____, ____] 
+```
+
+如果你希望把这个返回的数据表保存下来, 可以把他赋值给一个新的变量
+
+```{r filter3, exercise=TRUE}
+jan1_flights <- 
+jan1_flights
+```
+
+上面两行可以缩短为一行, 使用`()`把赋值表达式括起来, 这样会同时完成赋值, 并且把赋值结果打印出来
+
+```{r filter4, exercise=TRUE}
+(____)
+```
+
+### 逻辑判断符号
+
+如果在`filter()`函数中给出多个逻辑测试条件，`filter()`将使用隐含的 "and" or "&" 条件来组合每一个逻辑测试条件。换句话说，`filter()`将返回满足每个测试条件为`TRUE`的行
+
+```{r fig-filter, echo = FALSE, out.width = "100%", fig.cap = "x 是左边的圆圈, y 是右边的圆圈, 阴影部分代表运行结果"}
+knitr::include_graphics("www/transform-logical.png")
+```
+
+```{r filter5, exercise=TRUE, exercise.lines=5}
+x <- c(T,T,F,F)
+y <- c(F,T,T,F)
+x == y
+```
+
+```{r quiz-filter, echo = FALSE}
+quiz(caption = "小测",
+  question("以下代码将返回什么结果? `flights %>% filter(month == 11 | 12)",
+           answer("每个在11月或12月起飞的航班"),
+           answer("每个既在11月又在12月起飞的航班"),
+           answer("每个月所有的航班", correct=TRUE),
+           answer("这是一个错误的表达式"),
+           allow_retry = TRUE,
+           random_answer_order = TRUE
+  )
+)
+```
+
+我们可以使用`distinct()`函数帮助我们获取某列中所有不同的值
+
+```{r filter6, exercise=TRUE}
+flights %>% 
+  filter(month == 11 | month == 12) %>%
+  distinct(month)
+```
+
+1. 我们还可以通过`%in%`这个逻辑符号来实现选取11月或者12月的航班
+
+    ```{r, eval = FALSE}
+    flights %<% filter(month %in% c(11, 12))
+    ```
+    
+2. 如果你想找出没有延误（到达或出发）的航班, 有两种表达方式
+
+    ```{r, eval = FALSE}
+    flights %>% filter( !( (arr_delay>0) | (dep_delay>0) ) )
+    flights %>% filter( (arr_delay<=0) & (dep_delay<=0) )
+    ```
+    
+3. 请区别 `&&,||` 同 `&,|`, 前者只判断具体的某个值, 而后者支持向量化运算, 所以请千万不要在`filter()`中使用前者
+
+### 缺失值
+
+R 使用 `NA` 来表示缺失值, 任何涉及`NA`的操作都会得到`NA`. 我们可以通过`is.na()`函数来检测某个值是否是缺失值. 
+
+```{r filter7, exercise = TRUE}
+NA > 5
+10 == NA
+NA + 10
+NA / 2
+x <- NA
+is.na(x)
+```
+
+`filter()`自动排除表达式中变量结果为空值的行, 你可以选择通过`|` 来保留这些行
+
+```{r filter7_5, exercise = TRUE}
+df <- tibble(x = c(1, NA, 3))
+# filter(df, x > 1)
+# filter(df, is.na(x) | x > 1)
+```
+
+首先我们通过`is.na()`函数和`colSums()`函数查看哪些列包含缺失值
+
+```{r filter8, exercise = TRUE}
+flights %>% is.na() %>% colSums()
+```
+
+然后我们用filter过滤掉早于预计时间出发的航班
+
+```{r filter9, exercise = TRUE}
+```
+
+```{r filter9-hint-1}
+new_flights <- flights %>%  filter(dep_time >= 0)
+```
+```{r filter9-hint-2}
+new_flights %>% is.na() %>% colSums()
+```
+
+
+### 练习
+
+1. 选取延误超过 2 个小时的航班
+
+    ```{r filterex1, exercise = TRUE}
+
+    ```
+    ```{r filterex1-hint}
+    flights %>% filter(arr_delay >= 120) # arr_delay is in minutes
+    ```
+
+2. 飞往休斯顿 (有两个飞机场, IAH 和 HOU) 的航班
+
+    ```{r filterex2, exercise = TRUE}
+
+    ```
+    ```{r filterex2-hint}
+    flights %>% filter(dest %in% c("IAH", "HOU"))
+    ```
+
+
+3. 选取联合航空 (UA)，美国航空 (AA) 或达美航空 (DL) 的航班
+
+    ```{r filterex3, exercise = TRUE}
+
+    ```
+    ```{r filterex3-hint}
+    flights %>% filter(carrier %in% c("UA", "AA", "DL"))
+    ```
+    
+4. 夏季 (7,8,9 月份) 出发的航班
+
+    ```{r filterex4, exercise = TRUE}
+
+    ```
+    ```{r filterex4-hint}
+    flights %>% filter(6 < month, month < 10)
+    ```
+
+5. 到达时间延长超过两小时，但没有出发晚点的航班
+
+    ```{r filterex5, exercise = TRUE}
+
+    ```
+    ```{r filterex5-hint}
+    flights %>% filter(arr_delay > 120, dep_delay <= 0)
+    ```
+
+6. 起飞后至少延误一个小时，但在飞行中追回至少 30 分钟的航班
+
+    ```{r filterex6, exercise = TRUE}
+
+    ```
+
+    <div id="filterex6-hint">
+    **提示:** 每个航班追回的时间请使用 `dep_delay - arr_delay`.
+    </div>
+    
+### slice() 函数
+
+```{r, echo=F}
+countdown(minutes=10, seconds=0, update_every=1, start_immediately=F, top=0, font_size='1em')
+```
+
+果你希望通过行的索引来选取部分数据, slice() 函数家族 (type ?slice) 可能更方便
+
+```{r, eval=F}
+flights %>% slice(5) # 选取第五条记录
+flights %>% filter(row_number() == 5)
+flights[5, ]
+```
+
+你还可以通过 `slice_min() / slice_max()` 函数来选取某个变量最小/最大的行, 来帮助你甄别奇异值
+
+```{r, eval=F}
+flights %>% slice_max(dep_delay)        # 选取延迟到达最严重的航班
+flights %>% slice_min(dep_delay, n=5)   # 选取5个延迟到达最不严重的航班
+```
+
+还有`slice_sample()`函数帮助你随机抽取一些行, 这个在数据集特别大的时候特别有帮助
+
+```{r, eval=F}
+flights %>% nrow()                      # 总共336776行              
+flights %>% slice_sample(n=3000)        # 随机抽3000行
+flights %>% slice_sample(prop=0.01)     # 随机抽1%的数据
+```
+
+```{r slice, exercise = TRUE, exercise.lines=5}
+
+```
+
+## 用`select`选择列
+
+```{r, echo=F}
+countdown(minutes=10, seconds=0, update_every=1, start_immediately=F, top=0, font_size='1em')
+```
+
+`select()`函数用来筛选变量, 因为不是所有变量对于建模都有帮助. 而且有的时候你并不希望打印所有的列
+
+比如我们希望只打印年,月,日
+
+```{r select1, exercise = TRUE}
+flights %>% select(year, month, day)
+```
+
+注意一旦`select()`函数中包含**负号**, 则会选择除了负号包含在内的所有列, 并且自动忽略后面的参数。
+
+```{r select2, exercise = TRUE}
+flights %>% colnames()
+flights %>% select(-c('year', 'day'), carrier)
+```
+
+此外我们还可以用`where()`函数来选取符合条件的变量(即列)
+
+```{r select3, exercise = TRUE}
+flights %>% select(where(function(x) !is.numeric(x)))
+
+
+```
+
+上面的等价表达式. 想学习更多的同学们可以去看一看R语言中的lambda函数`~`
+
+```{r, eval=F}
+flights %>% select(where(~ !is.numeric(.x)))
+```
+
+
+### `rename` 重命名某些变量
+
+```{r select4, exercise = TRUE}
+df <- tibble(x = c(5, 2, NA))
+df %>% rename(y = x)
+```
+
+### 练习
+
+1. 列出尽可能多的选择`dep_time`、`dep_delay`、`arr_time`和`arr_delay`的方法
+
+    ```{r selectex1, exercise = TRUE}
+
+    ```
+    ```{r selectex1-hint-1}
+    # 1. 通过列标签
+    flights %>% select(dep_time, dep_delay, arr_time, arr_delay)
+    ```
+    ```{r selectex1-hint-2}
+    # 2. 通过列的下标索引
+    flights %>% select(4, 6, 7, 9)
+    ```
+    ```{r selectex1-hint-3}
+    # 3. 有的时候你可能拿到一个列标签的字符串, 这个时候你可以直接传入字符串
+    flights %>% select("dep_time", "dep_delay", "arr_time", "arr_delay")
+    ```
+    ```{r selectex1-hint-4}
+    # 4. 你也可以使用starts_with()函数模糊匹配
+    flights %>% select(starts_with("dep_"), starts_with("arr_"))
+    ```
+    ```{r selectex1-hint-5}
+    # 5. 如果你知道正则表达式的话, 也可以用正则表达式匹配列的名称
+    flights %>% select(matches("^(dep|arr)_(time|delay)$"))
+    ```
+
+
+2. 是否数据里只包含了2013年的数据，且出发地都是纽约的三个机场
+
+    ```{r selectex2, exercise = TRUE}
+
+    ```
+    ```{r selectex2-hint-1}
+    flights %>% select(year) %>% distinct()
+    flights %>% select(origin) %>% distinct()
+    ```
+
+从这里往下, 我们只关注月和日, 航空公司，航班号，出发和目的地，晚点程度，飞行距离和实际出发,空中飞行,以及到达时间
+
+```{r}
+new_flights <- flights %>% 
+    select(month, day, carrier, flight, origin, dest, ends_with('delay'), distance, matches("^(dep|arr|air)_time$")) 
+new_flights
+new_flights %>% colnames()
+```
+
+
+```{r new-flights}
+new_flights <- flights %>% 
+    select(month, day, carrier, flight, origin, dest, ends_with('delay'), distance, matches("^(dep|arr|air)_time$")) 
+new_flights
+new_flights %>% colnames()
+```
+
+
+## 用`mutate`创建/修改列
+
+如果括号里的变量名没有出现在原数据表中, 那么`mutate()`函数会在数据表的末尾按照指定规则添加新的一列。比如我们计算飞行速度并保存成新的一列
+
+```{r mutate1, exercise=TRUE, exercise.setup = "new-flights"}
+new_flights %>% mutate(speed = distance / air_time * 60)
+```
+
+此外`mutate()`函数中若包含创建多个变量, 后面的公式可以包含前面创建的变量
+
+```{r mutate2, exercise=TRUE, exercise.setup = "new-flights"}
+new_flights %>% mutate(
+    speed = distance / air_time * 60,
+    early_speed_ratio = _____
+)
+```
+
+```{r mutate2-solution}
+new_flights %>% mutate(
+    speed = distance / air_time * 60,
+    early_speed_ratio = ifelse(arr_delay<0, -arr_delay, 0) / speed
+)
+```
+
+
+### `mutate()`函数中的常用构造函数 (不考)
+
+ 函数 | 描述 |
+| ---------------- | --------- |
+| + - × / ^ | 算数运算符 |
+| %/% %% | 整除,取余 |
+| log() log2() log10() | 对数函数|
+| lead() lag() | 偏置函数 |
+| cumsum() cumprod() cummin() cummax() cummean() | 累加函数|
+| min_rank() percent_rank() rank() |  排序函数|
+
+比如我们希望计算飞了多少小时，多少分钟，我们可以使用整除和取余操作
+
+```{r mutate3, exercise=TRUE, exercise.setup = "new-flights"}
+new_flights %>% select(air_time) %>% summary()
+```
+
+```{r mutate3-solution}
+new_flights %>% mutate(
+    speed = distance / air_time * 60,
+    early_speed_ratio = ifelse(arr_delay<0, -arr_delay, 0) / speed
+)
+```
+
+### 练习
+
+1. `dep_time`和`arr_time`目前很方便查看，但很难计算，因为它们不是真正的连续数字。将它们转换为从午夜12:00开始的分钟数的更方便的表示
+
+    ```{r mutateex1, exercise = TRUE, exercise.setup = "new-flights"}
+
+    ```
+    ```{r mutateex1-hint-1}
+    # 创建一个函数, 该函数提取原始时间戳的小时和分钟, 最后返回以0:00计时的分钟数
+    clock2minute <- function(time) {
+        hour <- time %/% 100
+        minute <- time %% 100
+        return(hour*60 + minute)
+    }
+    ```
+    ```{r mutateex1-hint-2}
+    # 得到两个新的变量
+    new_flights %>% mutate(
+        arr_time = clock2minute(arr_time),
+        dep_time = clock2minute(dep_time)
+    )
+    ```
+    
+    你会发现`air_time =/= arr_time - dep_time`, 造成这种现象的原因有很多, 一个原因是航班可能
+    午夜飞行导致到达时间比出发时间还小, 另一个原因就是这些数字是不是在同一个时区统计的
+
+2. 创建三个变量，分别是航班名称(`carrier + flight`), 日期(`month / day`), 以及是否航班取消(`dep_time is NA`)
+
+    ```{r mutateex2, exercise = TRUE, exercise.setup = "new-flights"}
+
+    ```
+    ```{r mutateex2-hint}
+    new_flights %>% mutate(
+        flight_name = paste(carrier, flight, sep=''),
+        flight_date=paste(month, day, sep='/'), 
+        flight_cancelled=ifelse(is.na(dep_time), T, F)
+    )
+    ```
+    
+```{r new-flights-2, echo=F, exercise.setup = "new-flights"}
+clock2minute <- function(time) {
+    hour <- time %/% 100
+    minute <- time %% 100
+    return(hour*60 + minute)
+}
+new_flights %>% mutate(
+    arr_time = clock2minute(arr_time),
+    dep_time = clock2minute(dep_time)
+) -> new_flights
+new_flights %>% mutate(
+    flight_name = paste(carrier, flight, sep=''),
+    flight_date=paste(month, day, sep='/'), 
+    flight_cancelled=ifelse(is.na(dep_time), T, F)
+) -> new_flights
+```
+
+
+## 用`summarise`总结数据
+
+```{r, echo=F}
+countdown(minutes=10, seconds=0, update_every=1, start_immediately=F, top=0, font_size='1em')
+```
+
+最后一个非常重要的函数是`summarise()`, 它把整个数据表的信息给压缩成一行, 注意这里计算统计量的时候, 使用`?stat`看看
+这个统计量函数`stat`是否包含`na.rm=TRUE`这个选项, 即remove NA
+
+```{r summary1, exercise = TRUE, exercise.setup = "new-flights-2"}
+new_flights %>% summarise(delay = mean(dep_delay))
+```
+
+通常情况下, `summarise()`都是和`group_by()`函数一起使用, 然后`summarise()`会自动在每一个组别中分别计算并且输出与之对应的结果。比如下面这个代码就输出了每一天的平均晚点出发程度, 和每一天的航班数目 
+
+```{r summary2, exercise = TRUE, exercise.setup = "new-flights-2"}
+new_flights %>% 
+    _____ %>%
+    _____
+```
+
+```{r summary2-hint-1}
+new_flights %>% 
+    group_by(month, day) ->
+    new_groupby
+```
+
+```{r summary2-hint-2}
+new_flights %>% 
+    group_by(month, day) %>%
+    summarise(delay = mean(dep_delay, na.rm = TRUE), n_flight=n())
+```
+
+
+我们可以在计算晚点的时候只考虑正数, 不考虑那些早出发的航班, 这个时候就不需要考虑`dep_delay`存在缺失值的情况了, 为什么?
+
+```{r summary3, exercise = TRUE, exercise.setup = "new-flights-2"}
+```
+
+<div id="summary3-hint">
+**答案:** 因为我们使用了`filter()`函数，它帮我们自动过滤了没有出发晚点记录的航班
+</div>
+
+
+下面这个表总结了一些在`summarise()`函数中常常被调用的总结函数
+
+
+| 类型 | 函数 | 描述 |
+| --- | ----- | --------- |
+| Count | n() | 获取值的计数 |
+| | n_distinct() | 获取不同值的计数 |
+| Agg | sum() | 计算总和 |
+|  | mean() | 均值 (mean) 通用函数，用于计算（修剪的）算术平均值 |
+|  | median() | 计算样本中位数 |
+| Range | min() | 最小值 |
+|  | max() | 最大值 |
+|  | quantile() | 生成样本分位数 | 
+| Position | first() | 获取第一个值 |
+|  | last() | 获取最后一个值 |
+|  | nth() | 获取第n个值 |
+| Spread | sd() | 计算标准差 |
+|  | iqr() | 计算四分位距 |
+|  | mad | 计算中位数绝对偏差 (median absolute deviation) |
+| Logical | any() | any |
+|  | all() | all | 
+
+### 练习
+
+1. 每一个航空公司有多少航班
+
+    ```{r summaryex1, exercise = TRUE, exercise.setup="new-flights-2"}
+    
+    ```
+    ```{r summaryex1-hint}
+    new_flights %>% group_by(carrier) %>% summarize(count=n_distinct(flight_name))
+    ```
+
+2. 哪一个机场从纽约三大机场出发的航班最多
+
+    ```{r summaryex2, exercise = TRUE, exercise.setup="new-flights-2"}
+    
+    ```
+    ```{r summaryex2-hint}
+    new_flights %>% group_by(origin) %>% summarize(n=n()) %>% arrange(desc(n))
+    ```
+
+3. 从JFK到ATL的飞行时间的描述性统计指标(mean/min/max/sd)
+
+    ```{r summaryex3, exercise = TRUE, exercise.setup="new-flights-2"}
+    new_flights %>% 
+      filter(origin=='JFK', dest=='ATL', air_time >= 0) %>% 
+      summarise(
+        _____
+      )
+    ```
+
+4. 打印航班取消最多的前五家公司
+
+    首先我们确认之前创建的航班是否取消(`flight_cancelled`)这一列并不包含缺失值
+    
+    ```{r summaryex41, exercise = TRUE, exercise.setup="new-flights-2"}
+    ```
+    ```{r summaryex41-hint}
+    new_flights %>% summarise(contain_na = any(is.na(flight_cancelled)))
+    ```
+    
+    在确定没有缺失值的情况下, 我们计算每一个航司全年总共取消的航班数, 然后选前5家
+    
+    ```{r summaryex42, exercise = TRUE, exercise.setup="new-flights-2"}
+    ```
+    ```{r summaryex42-hint-1}
+    new_flights %>%  
+      group_by(carrier) %>% 
+      summarise(total_cancelled=sum(flight_cancelled))
+    ```
+    ```{r summaryex42-hint-2}
+    new_flights %>%  
+      group_by(carrier) %>% 
+      summarise(total_cancelled=sum(flight_cancelled)) %>%
+      slice_max(total_cancelled, n=5) #或者先排序, 然后选前5行
+    ```
+    
+    但是像UA这样的大航司本身航班就很多，所以用绝对值统计可能不太好，我们改成用航班取消的可能性来重新评估
+    ```{r summaryex43, exercise = TRUE, exercise.setup="new-flights-2"}
+    ```
+    ```{r summaryex43-hint}
+    new_flights %>%  
+      group_by(carrier) %>% 
+      summarise( 
+        likelihood=mean(flight_cancelled), 
+        total_cancelled=sum(flight_cancelled),
+        total_flights=n()
+      ) %>%  
+      slice_max(likelihood, n=5)
+    ```
+    
+    可以看到结果完全不一样
+    
+5. 哪一家航司晚点到达最严重（不考虑比预期时间早到）
+
+    ```{r summaryex51, exercise = TRUE, exercise.setup="new-flights-2"}
+    ```
+    ```{r summaryex51-hint}
+    new_flights %>% 
+      filter(arr_delay >= 0) %>% 
+      group_by(carrier) %>%
+      summarise(arr_delay=mean(arr_delay)) %>%
+      arrange(desc(arr_delay))
+    ```
+    
+    然后通过`airlines`这个数据获得这家航司的名称
+    ```{r summaryex52, exercise = TRUE, exercise.setup="new-flights-2"}
+    filter(airlines, carrier == ____) 
+    airlines %>% filter(carrier == ____)
+    ```
+
+6. 一天里哪个时间段起飞最不容易晚点
+
+    首先我们确认起飞时间是否存在缺失值
+    
+    ```{r summaryex61, exercise = TRUE, exercise.setup="new-flights-2"}
+    new_flights %>% summarise(contain_na = any(is.na(dep_time)))
+    ```
+    
+    然后我们看每一个小时平均起飞延误时间
+    
+    ```{r summaryex62, exercise = TRUE, exercise.setup="new-flights-2", exercise.lines=6}
+    new_flights %>% 
+    ```
+    ```{r summaryex62-hint}
+    new_flights %>%
+      mutate(hour=dep_time %/% 100) %>%
+      group_by(hour) %>%
+      summarise(dep_delay = mean(dep_delay, na.rm = TRUE), total_flights=n()) %>% 
+      arrange(dep_delay)
+    ```
+    
+    
+    
+    
+    

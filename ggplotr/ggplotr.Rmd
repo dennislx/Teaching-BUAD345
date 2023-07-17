@@ -1,0 +1,952 @@
+---
+title: "Tutorial"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{js, echo=FALSE}
+var editor_font = "18px";   //修改代码区块的字体大小
+$(function() {
+   $('.ace_editor').each(function( index ) {
+     ace.edit(this).setFontSize(editor_font); 
+   });
+})
+```
+
+```{css, echo=FALSE}
+:root {
+    --body-font: 16px;      /*修改文本的字体大小*/
+}
+a:hover { color: red;  }
+body, .ace-tm {
+    /*font-family: "Ubuntu Mono", "NSimSun", "SimSun", "SimHei", monospace !important; */
+    font-size: var(--body-font) !important;
+}
+label { display: flex !important; align-items: center}
+label > span {padding-left: 5px; }
+label > input {top: unset !important; }
+.tutorialTitle { color: #91a01e; }
+h2 { color: #ed1f7f; font-size: 2em; }
+h3 { color: #005587; font-size: 1.5em; }
+details > summary { display: list-item; }
+details {
+    border: 1px solid #aaa;
+    border-radius: 0.2rem;
+    padding: 0.5em 0.5em 0;
+}
+div.two-col { display: flex;}
+div.two-col > div {flex: 50%; padding: 0 10px}
+```
+------------------------------------------------------------------------
+
+## 学习目标
+
+> - 学习怎么做探索性数据分析
+> - 学习生成条形图, 直方图, 箱图, 散点图, 折线图
+> - 学习如何对图形进一步修改: 缩放, 标签, 注释, 主题, 颜色
+
+```{r setup, echo=FALSE}
+pacman::p_load(here)
+source(here(getwd(), 'www', 'setup.R'))
+
+R <- fa('r-project')
+E <- fa('vial-circle-check')
+Q <- fa('circle-question')
+p <- ggplot(diamonds) + geom_boxplot(mapping = aes(x = cut, y = price))
+g <- ggplot(data = diamonds, mapping = aes(x = carat, y = price)) +
+  geom_smooth(mapping = aes(color = cut), se = FALSE) 
+h <- ggplot(data = mpg) + 
+  geom_jitter(mapping = aes(x = displ, y = hwy, color = hwy)) +
+  theme_bw()
+```
+
+---
+
+
+## 探索性数据分析
+
+在画图之前你应该先对数据有基本的了解. 可视化基本解决两个问题: 1) 变量的分布; 2) 变量与变量之间的关系。前面我们在`tidyr`那个部分学过, 在画图前, 确保你画图中涉及的每一个数据点都在单独的单元格里, 每个变量有自己单独的列，每个观测有自己单独的行. 
+
+科学研究包含两个过程: 探索和假设检验. 首先我们通过探索性数据分析提出要被检验的假设. 然后，使用专门的统计工具来证实针对(没有见到过的)数据的假设是否依然成立. 所以我们学习可视化的一个重要目的就是发掘数据的特征并提出一堆基于可视化结果的假设
+
+### 数据分布
+
+首先我们要弄清涉及这个分布的变量是连续值还是离散值. 离散值在`r R`中一般是字符串类型(character)或者因子类型(factor). 而连续变量[^1]在`r R`中一般是数值型(numeric)或者时间类型(date-times)
+
+```{r, collapse=TRUE}
+mpg %>% glimpse()
+```
+
+```{r}
+mpg %>% ggplot() +
+  geom_bar(aes(x = class)) + 
+  labs(title="离散变量: 车型(class)") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) -> a
+
+mpg %>% ggplot() +
+  geom_histogram(aes(x = displ), binwidth = 0.1) + 
+  labs(title="连续变量: 发动机排量(displ)") -> b
+
+a + b
+```
+
+[^1]: 如果将连续变量的值进行排序, 任意两个数据点之间存在无限多个值, 例如0.9到1之间存在0.91, 0.99, 0.999等无限多个可能的值
+
+在上面的条形图(`geom_bar`)和直方图(`geom_histogram`)中, 注意y轴代表频次(count). 也就是说值越高, 代表某个或某些值(区间)出现的越频繁. 有了这个频次分布图, 我们可以提出以下问题: 
+
+1. 哪些值最常见, 为什么这样
+2. 哪些值比较稀有, 为什么这样
+3. 这个分布是否符合预期, 是否存在异常值, 即距离其他数据点比较远的点
+
+对于连续变量而言(x轴连续), 你可能会注意到分布具有一些明显的特征。
+
+```{r, echo = F}
+ggplot(data = faithful) +
+  geom_histogram(aes(x = eruptions), binwidth = 0.25) + 
+  labs(title="黄石公园 Old Faith 火山272次喷发的持续时间 (单位: 分钟)")
+```
+
+我们先搞清楚`x`和`y`轴分别代表什么, 这里`x`显示每次喷发的持续时间, 可以看到最短持续约一分钟，最长持续约五分钟. 然后`y`显示在某个时间范围内(例如2分钟-2分钟15秒)的观测次数, 或者说历史上有30次该火山喷发的持续时间在2分钟至2分钟15秒左右. 
+
+### 双变量
+
+当你希望发现两个变量之间的关系(例如相关关系), 同样要区分变量是连续还是离散
+
+```{r, fig.height = 2}
+ggplot2::diamonds %>% count(color, cut) %>% 
+  ggplot(mapping = aes(x = color, y = cut)) +
+  geom_tile(mapping = aes(fill = n)) -> a
+
+ggplot2::diamonds %>%
+  ggplot(mapping = aes(x = color, y = cut)) +
+  geom_count() -> b
+
+(a + b) + patchwork::plot_annotation(
+  title = "离散+离散: 53940颗钻石的颜色与切工质量的关系"
+)
+```
+
+```{r, fig.height = 2}
+ggplot(data=mpg) +
+  geom_boxplot(
+    mapping = aes(x = reorder(x=class, X=hwy, FUN=median), y = hwy)
+  ) +
+  labs(x = "class", title = "离散+连续: 不同车型的高速油耗") -> a
+
+ggplot(data=mpg) +
+  geom_point(
+    mapping = aes(x = displ, y = hwy)
+  ) + 
+  labs(title = "连续+连续: 发动机排量和高速油耗的关系") -> b
+
+a + b
+```
+
+根据变量类型的不同, 在可视化之前先确定你关心的变量类型:
+
+```{r echo=FALSE, fig.align='center'}
+add_img('plots-table.png')
+```
+
+
+## 单变量
+
+### 条形图
+
+添加`geom_bar`图层到`ggplot()`对象中, 注意`+`而不是`%>%`
+
+```{r, fig.align='center'}
+ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut)) -> a
+
+count <- diamonds %>% count(cut)
+ggplot(data = count) + 
+  geom_bar(mapping = aes(x = cut, y = n), stat='identity') -> b
+
+ggplot(data = count) + 
+  geom_col(mapping = aes(x = cut, y =n)) -> c
+
+(a + b + c) + 
+  patchwork::plot_annotation( title = "不同钻石切工质量的计数分布")
+```
+
+如果你输入`?geom_bar`会发现
+
+```{r echo=FALSE, fig.align='center', out.width = "60%"}
+add_img('geom_bar.png')
+```
+
+也就是说你必须提供`x`轴和`y`轴的映射, `r R`才明白怎么作图. 可这里我们并没有指示`y`轴应该填入什么信息呀? 事实上它会在拿到`x`的信息后, 计算每一个`x`出现的次数, 并返回`after_stat(count)`作为`y`轴的默认值. 你也可以像右边这样先手动计数, 然后填入`x`和`y`轴的映射信息. 但你可能注意到我把`stat`参数由原来的`stat=count`换成了`stat=identity`. ggplot直接将后者封装成了`geom_col`函数
+
+`r E` 使用上面三种条形图方式画出不同钻石颜色的计数分布
+
+```{r bex1, exercise = TRUE}
+
+```
+
+```{r bex1-hint}
+ggplot(data = diamonds) + geom_bar(mapping = aes(x = color))
+```
+
+另外你可以通过`width`参数来控制每一个条块的宽度, 比如把之前的条形图换成`width=0.1`看一看结果发生了什么改变
+
+```{r bex2, exercise = TRUE}
+
+```
+
+```{r bex2-hint}
+ggplot(data = diamonds) + geom_bar(mapping = aes(x = color), width=0.1)
+```
+
+`r Q`: 想一想, 如果将`width = 0.1`写到`aes()`函数里会发生什么
+
+### AES
+
+在`geom_bar`和`geom_col`中你还可以通过设置不同的alpha(透明度), color(颜色), fill(填充色), linetype(线条形状), size(大小尺寸)来控制图形输出的样式
+
+```{r bex3, exercise = TRUE}
+# 用颜色区分不同切工
+ggplot(data = diamonds) + geom_bar(mapping = aes(x = cut, color = cut))
+```
+
+### Position参数
+
+前面讲了`width`参数能控制每一个条形块的宽度, `position`则能够控制同一个`x`却属于不同组别的条形块如何堆叠. 
+
+比如下面这四种堆叠方式: identity(重叠), fill(堆叠但顶部都是100%), stack(堆叠), dodge(并行排列)
+
+```{r, fig.align='center', fig.height=4}
+a <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='stack') + labs('stack') +
+  theme(legend.position = "none")
+b <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='dodge') + labs('dodge') +
+  theme(legend.position = "none")
+c <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='fill') + labs('fill') +
+  theme(legend.position = "none")
+d <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='identity') + labs('identity') +
+  theme(legend.position = "none")
+
+((a + b) / (c + d)) + 
+  patchwork::plot_annotation( title = "不同纯度钻石的切工质量的计数分布")
+```
+
+`r E`: 如何复现下面这张图
+
+```{r, echo = F, fig.height=2}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color, fill = clarity), position = "fill")
+```
+
+```{r bex4, exercise = TRUE}
+
+```
+
+```{r bex4-solution}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color, fill = clarity), position = "fill")
+```
+
+### Facetting
+
+除了堆叠这种避免数据拥挤的方式外, 我们还可以制作子图来分割不同组别的数据. 你可以通过`facet_grid()`或`facet_wrap()`来分面. 
+
+- `facet_grid`通过`rows`和`cols`参数将图垂直分割为小平面, 每个特定的子图显示特定的行列组合
+- `facet_wrap()` 提供了一种更简单的方法对图进行分面, 它将把图分成子图，然后将子图重新组织成多行(通过`nrow`, `ncol`实现)
+
+`r E`: 按照纯度(行)-切工质量(列)制作不同钻石颜色的频数分布图, 注意引用变量使用`"变量名"`或者`vars(变量名)`
+
+```{r bex5, exercise = TRUE}
+
+```
+
+```{r bex5-solution}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color)) +
+  facet_grid(rows=vars(clarity), cols=vars(cut))
+```
+
+`r E`: 按照纯度制作不同钻石颜色的频数分布图, 要求使用`facet_wrap`函数实现
+
+```{r bex6, exercise = TRUE}
+
+```
+
+```{r bex6-solution}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color)) +
+  facet_wrap(vars(clarity))
+```
+
+### 直方图
+
+前面讲过, 条形图适用于统计离散变量的计数, 而直方图适用于连续变量的计数. 它本质上是通过`bin`函数统计每一个小区间里观测的数目, 然后问题就变成了之前学习的如何描绘离散变量的计数分布. 
+
+这些参数可以帮助你定义区间:
+
+- binwidth: 默认情况下, 会自动选择一个`binwidth`从而产生大约30个条形块
+- bins: 产生多少个条形块
+- boundary: 设置两个条形块之间的间距
+
+:::: two-col
+::: {}
+`r E`: 描绘不同切工质量的钻石价格计数分布, 产生50个条形块, 使用默认堆叠方式, 条形块间距为0
+:::
+::: {}
+```{r three-histogram, echo = FALSE}
+ggplot(data = diamonds) +
+  geom_histogram(mapping = aes(x = price, fill = cut), bins = 500, boundary = 0)
+```
+:::
+::::
+
+```{r bex7, exercise = TRUE}
+
+```
+
+现在这个图很难看出各个分布的形状, 我们可以使用堆叠的方式(position=dodge), 但还是太拥挤了. 除了分面以外, 我们还可以使用不同的几何图形显示不同切工钻石价格的分布. 
+
+- geom_freqpoly() 绘制频率多边形, 和直方图显示的信息一样, 只是用线条表示。等于用一条线连接每一个条形顶部. 注意我把AES从`fill`改成了`color`
+- geom_density() 绘制每个分布的核密度曲线, 相当于平滑的直方图. 统计指标不是用计数(count)而是密度(count/total)
+
+
+```{r, fig.height=2}
+ggplot(data = diamonds) +
+  geom_freqpoly(
+    mapping = aes(x = price, color = cut), binwidth = 500, boundary = 0
+  ) -> a
+
+ggplot(data = diamonds) +
+  geom_density(
+    mapping = aes(x = price, color = cut)
+  ) -> b
+
+(a + b) + patchwork::plot_annotation( title = "不同切工质量的钻石价格的计数分布")
+```
+
+
+## 双变量
+
+### 箱图
+
+箱图展示了更多的统计信息, 包括中位数, 分位数, 奇异值等.
+
+```{r}
+ggplot(data = mpg) +
+  geom_boxplot(mapping = aes(x = class, y=hwy)) +
+  coord_flip() +
+  labs(title = "不同车型的高速油耗")
+```
+
+如果你不希望看到奇异值出现在图形中, 可以通过设定`outlier.alpha=0`来实现
+
+```{r outliers, exercise = TRUE}
+ggplot(data = diamonds) +
+  geom_boxplot(
+    mapping = aes(x = cut, y = price), 
+    outlier.shape  = 24, outlier.fill = "white", outlier.stroke = 0.25
+  )
+```
+
+:::: two-col
+::: {}
+当`x`轴是连续值的时候, 箱图并不会自动切分, 你必须定义`group`映射
+
+你可以使用如下三种将连续变量离散化的方式
+
+1. `cut_interval()` 使 n 个组具有相等的长度
+2. `cut_number()` 使 n 个组具有（大约）相等的观测
+3. `cut_width()` 使组的宽度固定为width
+:::
+::: {}
+```{r two-histogram, echo = FALSE}
+ggplot(data = diamonds) +
+  geom_boxplot(mapping = aes(x = carat, y = price))
+```
+:::
+::::
+
+```{r, collapse=T}
+x <- 1:10
+cut_interval(x, n = 3)
+cut_number(x, n = 5)
+cut_width(x, width = 3)
+```
+
+将钻石重量(克拉)进行离散化, 每0.5的区间作为一个箱, 得到箱型图
+
+```{r r4, exercise = TRUE, exercise.eval = TRUE}
+ggplot(data = diamonds) +
+  geom_boxplot(mapping = aes(x = carat, y = price))
+```
+
+```{r r4-solution}
+ggplot(data = diamonds) +
+  geom_boxplot(
+    mapping = aes(x = carat, y = price, group = cut_width(carat, width = 0.5))
+  )
+```
+
+另外两种表示离散-连续变量分布的函数也很常用, 他们是`geom_dotplot`和`geom_violin`
+
+- `geom_dotplot`: 如果将`binaxis`参数设置为"y", geom_dotplot() 将和 geom_boxplot() 一样给每组数据显示单独的分布
+- `geom_violin`: 则使用密度函数绘制`dotplot`的平滑轮廓版本. 数值多的地方小提琴就厚，数值少的地方就薄
+
+```{r, fig.align='center', fig.height=2}
+ggplot(data = mpg) +
+  geom_boxplot(mapping = aes(x = class, y = hwy)) +
+  coord_flip() + labs(x=NULL) -> a
+
+ggplot(data = mpg) +
+  geom_dotplot(
+    mapping = aes(x = class, y = hwy), binaxis = "y", 
+    dotsize = 0.5, binwidth = 1
+  ) +
+  coord_flip() + labs(x=NULL)  -> b
+
+ggplot(data = mpg) +
+  geom_violin(
+    mapping = aes(x = class, y = hwy),
+    draw_quantiles = c(0.25, 0.5, 0.75)
+  ) +
+  coord_flip() + labs(x=NULL)  -> c
+
+(a + b + c) + 
+  patchwork::plot_annotation( title = "不同车型的高速油耗")
+```
+
+### 热点图
+
+如果两个变量都是离散的话, 除了人为切分, 你也可以使用`geom_count`和`geom_tile`来绘制两个离散变量的交互
+
+- `geom_count`: 在两两交汇的地方计数, 统计频次, 点的大小反映出现次数, 越大代表出现次数越多
+- `geom_tile`: 使用填充色来反映计数频次的大小
+
+```{r, fig.height=2}
+ggplot(data = diamonds) +
+  geom_count(mapping = aes(x = cut, y = clarity)) -> a
+
+diamonds %>% count(cut, clarity) %>% 
+  ggplot() +
+  geom_tile(mapping = aes(x = cut, y = clarity, fill = n)) -> b
+
+(a + b) + 
+  patchwork::plot_annotation( title = "不同切工和不同纯度之间的关系")
+```
+
+### 散点图
+
+```{r, fig.align='center', fig.height=5}
+mpg %>% 
+  group_by(class) %>% 
+  summarise(cty = mean(cty), hwy = mean(hwy)) -> data
+
+a <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_point() + labs('point')
+
+b <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_jitter() + labs('jitter')
+
+c <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_text(mapping = aes(label = class)) + labs('text')
+
+d <- ggplot(data = data, mapping = aes(x=cty, y=hwy)) + 
+  geom_label(mapping = aes(label = class)) + labs('label')
+
+
+((a + b) / (c + d)) + 
+  patchwork::plot_annotation( title = "高速油耗 ~ 城市油耗")
+```
+
+```{r bex7, exercise = TRUE}
+```
+
+我们可以添加`geom_smooth`用一根平滑曲线来拟合这些散点, 从而更好地分析趋势. 当数据集观测大于1000时, 他默认使用广义线性模型来拟合这些散点. 我们也可以在`method`参数那里规定拟合的算法.
+
+`r E`: 请给上面的散点增加一个线性拟合曲线(method=lm)
+
+```{r prep-data}
+mpg %>% 
+  group_by(class) %>% 
+  summarise(cty = mean(cty), hwy = mean(hwy)) -> data
+```
+
+```{r bex8, exercise = TRUE, exercise.setup="prep-data"}
+data
+```
+
+### 图层
+
+就像前面我们将散点和平滑拟合曲线组合, 图形的信息量立马丰富了许多一样. 通常一个ggplot都含有超过一个图层. 
+
+例如我们可以使用`ggrepel::geom_label_repel`函数来给数据点增加文本标签
+
+```{r bex9, exercise = TRUE, exercise.setup="prep-data"}
+ggplot(data) +
+    geom_point(mapping = aes(x = cty, y = hwy)) +
+    geom_smooth(mapping = aes(x = cty, y = hwy), method = lm) +
+    ggrepel::geom_label_repel(mapping = aes(x = cty, y = hwy, label = class))
+```
+
+我们需不需要在每一个图层里都指定`x`和`y`轴的映射信息呢? 答案是不需要, 他们可以直接继承ggplot()对象里的全局映射. 
+
+```r
+ggplot(data) + aes(x = cty, y = hwy)
+```
+
+- ggplot2 会将 ggplot() 函数中设置的任何映射视为全局映射. 图中的每一层都将继承并使用这些映射. 
+- ggplot2 会将 geom 函数中设置的任何映射视为局部映射. 只有该图层才会使用这些映射. 这个映射不会影响其他图层. 
+
+请把前面那个代码重写, 尽量继承全局映射而不要重复写局部映射
+
+
+```{r bex10, exercise = TRUE, exercise.setup="prep-data"}
+ggplot(data) +
+    geom_point(mapping = aes(x = cty, y = hwy)) +
+    geom_smooth(mapping = aes(x = cty, y = hwy), method = lm) +
+    ggrepel::geom_label_repel(mapping = aes(x = cty, y = hwy, label = class))
+```
+
+跟映射(AES)一样的还有数据(data), 我们也可以定义局部图层专属数据. 比如下面这个例子
+
+```{r local-data, exercise=TRUE}
+mpg3 <- filter(mpg, hwy > 40)
+ggplot(data = mpg, mapping = aes(x = displ, y = hwy)) +
+  geom_point() +
+  ggrepel::geom_label_repel(data = mpg3, mapping = aes(label = class))
+```
+
+### 折线图
+
+当`x`和`y`都是连续值的时候, 我们习惯用折线图反映两个连续变量之间的关系. 
+
+```{r, fig.align='center', fig.height=2}
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy)) + 
+  geom_line() -> a
+
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy)) + 
+  geom_step() -> b
+
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy)) + 
+  geom_area() -> c
+
+(a + b + c) + 
+  patchwork::plot_annotation( title = "发动机排量和高速油耗的关系")
+```
+
+你也可以添加分组映射(group)来给不同组别的观测绘制单独的折现, 不过建议使用颜色, 形状这种视觉冲击强的元素作为分组映射的目标
+
+```{r bex11, exercise=TRUE}
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy, group=drv)) + 
+  geom_line() -> a
+
+ggplot(data = mpg, mapping=aes(x = displ, y = hwy, color=drv)) + 
+  geom_step() -> b
+
+(a + b) + 
+  patchwork::plot_annotation( title = "不同驱动类型: 发动机排量和高速油耗的关系")
+```
+
+## 样式
+
+### 放缩
+
+
+:::: two-col
+::: {}
+`r E`: 请生成一个箱图,
+
+1. 反映钻石的切工质量(x轴)同价格(y轴)之间的关系
+2. 将ggplot图像存储在变量`p`里
+3. 输入`p`
+
+:::
+::: {}
+```{r histogram, echo = FALSE}
+p
+```
+:::
+::::
+
+```{r bex12, exercise = TRUE}
+
+```
+
+现在几乎看不出中位数的差异, 为了更突出不同切工质量钻石价格中位数的差异, 我们可以放大`y`的下半部分. ggplot2提供了两种放大的方法: 
+
+- clipping: 先剪切, 再画图(只画仍然保留在缩放区域内的)
+- without clippting: 相当于拿放大镜看
+
+```{r, echo=FALSE}
+p + ylim(0, 7500) -> a
+p + coord_cartesian(ylim = c(0, 7500)) -> b
+
+(a + b) + patchwork::plot_annotation( title = "聚焦钻石价格在0~7500美金的箱图")
+```
+
+左边是用`ylim()`函数实现的, 右边使用`coord_cartesian(ylim=)`实现的. 使用`ylim`会在绘制箱图之前就删除掉缩放区域之外的数据, 所以绘制的箱图会失真. 更推荐右边的做法. 在使用右边的方法前, 先确定自己的坐标系是不是最为常见的笛卡尔坐标系. 
+
+```{r bex13, exercise = TRUE}
+
+```
+
+```{r data-update}
+p <- p + coord_cartesian(ylim = c(0, 7500))
+```
+
+### 标签
+
+使用`labs()`函数给图像添加标签
+
+```{r}
+g + geom_smooth(mapping = aes(color = cut), se = FALSE) + 
+  labs(
+    title = "标题",
+    subtitle = "副标题",
+    caption = "注释",
+    x = "X轴",
+    y = "y轴"
+  )
+```
+
+还可以使用`annotate()`在指定位置添加标签. 注意`annotate`函数需要指定添加的`geom`类型
+
+
+```{r bex14, exercise = TRUE}
+g + 
+  annotate("text", x = 3, y = 7800, label = "没有又好又便宜的钻石")
+```
+
+### 主题
+
+主题描述了绘图中非数据元素的样式: 包括轴, 比例尺, 图例等. 这里的知识点非常多, 我建议如果只是轻度使用, 可以调用别人写好的主题. 比如`ggplot2::theme_classic()`或者第三方的`ggthemes::theme_economist()`
+
+另一个非常好用的工具叫做[esquisse](https://github.com/dreamRs/esquisse)
+
+```{r echo=FALSE, fig.align='center'}
+add_img('gg_theme.gif')
+```
+
+## scales映射
+
+不同于aes映射是把变量映射到特定的图形元素, scales映射是把数据的值映射到某个元素空间的某个值. 听上去有点绕, 给一个例子
+
+```{r}
+df <- data.frame(x = 1:3, y = c('blue', 'green', 'blue'))
+```
+
+:::: two-col
+::: {}
+```{r l-scales, eval=F}
+df <- data.frame(x = 1:3, y = c('blue', 'green', 'blue'))
+ggplot(df, aes(x, y, color=y)) + geom_point()
+```
+:::
+::: {}
+```{r, echo=F}
+<<l-scales>>
+```
+:::
+::::
+
+`r Q`: 为什么这里的颜色不是蓝色和绿色呢? 这是因为他们只是调色板映射前的值, `r R`会调用`scales::hue_pal()`调色板将值转换为颜色
+
+```{r bex15, exercise = TRUE}
+# 这里n=2是因为数据只有两个离散的值
+scales::show_col(scales::hue_pal()(n=2))
+```
+
+你可以使用`scale_color_*`来更换调色板, 比如下面这个. `r Q`: 你可以尝试删掉`scale_color_grey`, 然后输入`scale_color_` + tab键看看都有哪些调色板可供选取
+
+```{r bex16, exercise = TRUE}
+g + scale_color_grey()
+```
+
+对于离散变量而言, 除了`scale_color_discrete()`的默认映射方式外, 最常用的就是`scale_color_brewer()`函数
+
+```{r}
+g + scale_color_brewer(palette = "Purples") -> a
+g + scale_color_brewer(palette = "Spectral") -> b
+
+a + b
+```
+
+如果是连续变量, 除了`scale_color_continuous()`的默认映射方式外, `scale_color_brewer`的连续值版本是`scale_color_distiller`
+
+```{r bex17, exercise = TRUE}
+h + scale_color_continous()
+```
+
+```{r}
+h + scale_color_distiller(palette = "Purples") -> a
+h + scale_color_distiller(palette = "Spectral") -> b
+
+a + b
+```
+
+除了和颜色相关的调色板之外, ggplot给每一种美学映射都添加了映射函数, 比如`scales::shape_pal`是默认的散点图形样式函数. 你还可以使用`scale_x_*`和`scale_y_*`函数来改变`x`和`y`的映射. `r R`提供了超过50种各式各样的"调色板", 我们不需要一个一个都记住, 只需要知道他们有统一规范的命名方式
+
+
+### 命名范式
+
+```
+`scale` + `_` + `<aes>` + `_` + `<type>` + `()`
+
+调整什么映射 → `<aes>` <br>
+映射函数的标签 → `<type>`
+```
+
+| 函数                       | 说明                                                  |
+|--------------------------------|--------------------------------------------------------------|
+| `scale_x_continuous()`         | 修改本身是连续变量的x轴           |
+| `scale_y_log10()`              | 本质上等于`scale_y_continuous(trans='log10')`           |
+| `scale_color_manual()`         | 自定义颜色           |
+| `scale_fill_gradient()`        | 自定义渐变填充色    |
+| `scale_shape_binned()`         | 将离散变量映射到六个易于辨别的形状      |
+| `scale_linetype_discrete()`    | 调整离散线条类型的设置          |
+
+: 完整列表请参考[这里](https://ggplot2.tidyverse.org/reference/#scales)
+
+比如我们使用`scale_x_continuous()`映射函数, 但是改变`x`轴的`names', `breaks`和`labels`
+
+```{r bex18, exercise = TRUE}
+g + scale_x_continuous(
+  name='X', 
+  breaks=c(2,4), 
+  labels=c('TWO', 'FOUR')
+)
+```
+
+## 图例
+
+包括定制图例在图像中的位置, 是否出现, 标题, 键值和标签等. 
+
+### 位置
+
+默认情况下图例被放在图像的右侧, 你可以通过`theme()`函数调整图例的位置(bottom/top/left/right)
+
+```{r bex19, exercise = TRUE}
+h + theme(legend.position = 'bottom')
+```
+
+`r Q`: 请将`theme()`函数放在你调用的第三方主题后保证这些设置不会被第三方主题覆盖
+
+### 类型
+
+可以通过`guides()`函数调整每一种图例的类型, 类型只有三种: 隐藏(none), 调色棒(colorbar)和标准图例(legend)
+
+```{r bex20, exercise = TRUE}
+h + guides(color = 'legend')
+```
+
+### 标题和键值
+
+通过调用特定`aes`元素的映射函数来改变标签和标题, 例如
+
+```{r bex21, exercise = TRUE}
+g + scale_color_brewer(name='切工', labels=c('很差','较差','一般','较好','很好'))
+```
+
+
+## 例子
+
+```{r head-gapminder}
+pacman::p_load(gapminder)
+glimpse(gapminder)
+```
+
+---
+
+1. 绘制`lifeExp ~ gdpPercap`的散点图
+ 
+```{r eg1, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp) +
+  geom_point() 
+```
+
+```{r g1, exercise = TRUE}
+```
+
+---
+
+2. 分别输出不同洲的散点图
+
+```{r eg2, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point()
+```
+
+
+```{r g2, exercise = TRUE}
+```
+
+---
+
+3. GDP数据全挤在一起了, 不是很好判断两者的关系, 请将`x`轴对数化
+
+```{r eg3, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point()
+```
+
+```{r g3, exercise = TRUE}
+```
+
+---
+
+4. 数据还是有点拥挤, 请使用`facet_wrap`分别输出不同洲的他散点图, 并且隐藏图例(facet已经包含了)
+
+```{r eg4, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point() +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g4, exercise = TRUE}
+```
+
+---
+
+5. 数据好像还是互相重叠, 把散点大小调小为0.25
+
+```{r eg5, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_point(size = 0.25) +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g5, exercise = TRUE}
+```
+
+---
+
+6. 使用`geom_line`绘制折线图, 看看变化趋势
+
+```{r eg6, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_line() +
+  geom_point(size = 0.25) +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g6, exercise = TRUE}
+```
+
+---
+
+7. 按照不同洲, 绘制散点图, 提示: 在散点图映射中加入组别信息(group=country)
+
+```{r eg7, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = gdpPercap, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  scale_x_log10() +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g7, exercise = TRUE}
+```
+
+---
+
+8. 折线图也不能很好地反映趋势, 是不是我们需要考虑换一个`x`变量呢? 请把x映射改为`year`, 将y映射为`lifeExp`
+
+```{r eg8, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g8, exercise = TRUE}
+```
+
+---
+
+9. `x`轴的刻度根本看不清, 请将两个点之间的区间定义为25年, 从1950开始
+
+```{r eg9, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g9, exercise = TRUE}
+```
+
+---
+
+10. 请使用`geom_smooth`给它加一个线性拟合函数
+
+```{r eg10, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country)) +
+  geom_point(size = 0.25) +
+  geom_smooth() +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g10, exercise = TRUE}
+```
+
+---
+
+11. 突出线性拟合函数, 这里有两种做法: 一种是突出`geom_smooth`, 一种是不突出`geom_line`, 我们选择后者 (添加`color='grey', alpha = 0.5`)
+
+```{r eg11, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = lifeExp, color = continent) +
+  geom_line( aes(group = country), alpha = 0.5, color='grey') +
+  geom_point(size = 0.25) +
+  geom_smooth() +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+```{r g11, exercise = TRUE}
+```
+
+
+---
+
+最后我们撤掉散点图得到下面这个图
+
+```{r eg12, echo=F, cache=T}
+ggplot(gapminder) +
+  aes(x = year, y = gdpPercap, color = continent) +
+  geom_line( aes(group = country), alpha = 0.5, color='grey') +
+  geom_smooth() +
+  scale_y_log10() +
+  scale_x_continuous(breaks = seq(1950, 2000, 25)) +
+  facet_wrap(~ continent) +
+  guides(color = 'none')
+```
+
+
+<!-- https://github.com/poncest/tidytuesday/tree/main/2022/Week_22 -->

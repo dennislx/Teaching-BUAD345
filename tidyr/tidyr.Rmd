@@ -1,0 +1,966 @@
+---
+title: "`TidyR` 教程"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{js, echo=FALSE}
+var editor_font = "18px";   //修改代码区块的字体大小
+$(function() {
+   $('.ace_editor').each(function( index ) {
+     ace.edit(this).setFontSize(editor_font); 
+   });
+})
+```
+
+```{css, echo=FALSE}
+:root {
+    --body-font: 16px;      /*修改文本的字体大小*/
+}
+a:hover { color: red;  }
+body, .ace-tm {
+    /*font-family: "Ubuntu Mono", "NSimSun", "SimSun", "SimHei", monospace !important; */
+    font-size: var(--body-font) !important;
+}
+label { display: flex !important; align-items: center}
+label > span {padding-left: 5px; }
+label > input {top: unset !important; }
+.tutorialTitle { color: #91a01e; }
+h2 { color: #ed1f7f; font-size: 2em; }
+h3 { color: #005587; font-size: 1.5em; }
+details > summary { display: list-item; }
+details {
+    border: 1px solid #aaa;
+    border-radius: 0.2rem;
+    padding: 0.5em 0.5em 0;
+}
+div.two-col { display: flex;}
+div.two-col > div {flex: 50%; padding: 0 10px}
+```
+------------------------------------------------------------------------
+
+## 学习目标
+
+> - 如何合并数据表
+> - 如何长宽变换
+> - 如何合并/分割单元格
+
+<details>
+
+<summary>我在`www/setup.R`里创建了几个函数, 感兴趣的同学可以自行查看</summary>
+
+| 函数 | 作用 |
+| :---- | :-------------------- |
+| `print_data` | 去掉行号和数据类型, 只打印数据表里的内容 |
+| `tbl_memdb`  | 将数据表写到内存数据库里, 方便将R代码转换为SQL代码 | 
+| `copy_to`    | 改写了`dplyr::copy_to`函数, 默认会把数据表写入数据库并持久化 |
+| `connect_to`    | 与某个sqlite本地数据库建立连接, 并打印数据表中已经存储的表格 |
+</details>
+
+</br>
+```{r setup}
+pacman::p_load(here)
+source(here(getwd(), 'www', 'setup.R'))
+# 我们先把数据库加载进来, 后端引擎是sqlite (connection)
+con <- connect_to(path=add_www('buad345.db'))
+
+# 这个数据有点大, 所以我没有把它放到数据库里
+flights <- nycflights13::flights
+babynames <- babynames::babynames %>% group_by(year, sex) %>% summarise(total=sum(n))
+yuanshen <- tbl(con, 'genshin_characters') %>% collect()
+
+x <- tibble(id=1:3, x=paste0('x',1:3))
+y <- tibble(id=(1:4)[-3], y=paste0('y',(1:4)[-3]))
+wide <- tibble(id = rep(1:2), x = letters[1:2], y = letters[3:4], z = letters[5:6])
+long <- tidyr::pivot_longer(wide, x:z, names_to = "key")
+```
+
+
+### 合并数据表
+
+::: {.alert .alert-tip}
+还记得我们在`dplyr`学到的`bind_rows`和`bind_cols`函数吗? 这两个函数都是逐行或者逐列地拼接两个数据表, 如果数据表长度不一样, 会进行自动补齐, 如果数据类型不一致, 会进行类型强制转换
+:::
+
+## 主键和外键
+
+在学习联表前，你需要先了解两个概念: `r fa('key')`主键 (primary key) 和 `r fa('key')`外键 (foreign key). 举个例子，假设我们有两个表：其中一个表 Student 记录了每个同学的姓名 , 学号，联系方式等等，另一个表是课程注册信息 Course，其中有一个名为学生ID 的信息.
+
+在这里，学号是每一个同学的唯一标识，因为它和每一个同学的背景信息都是一一对应的 (即唯一识别每一行)，所以 Student 的主键就是学号. 而课程ID 则是每一个课程的唯一标识，所以 Course 的主键就是课程ID. 而如果我们希望关联这两个表，就需要找到 Course 表的外键 – 即这个表中与 Student 表主键相关联的变量，在这里我们可以将学生ID 作为建立关联的外键。这样，我们就可以通过外键查询某个学生所选的课程或查找每门课程的学生信息.
+
+比如在下面这张图片中, 有 5 个相互关联的数据集。高亮为灰色背景的是某个数据集的主键。用箭头将他们连接到相对应的外键上. 
+
+```{r out.width = "75%", echo=FALSE, fig.align='center'}
+add_img('flights.png')
+```
+
+> 那么到底什么是主键呢? `r fa('key')`主键 (primary key) 和 `r fa('key')`外键 (foreign key) 是用于连接数据表的变量，能够唯一标识数据的变量或变量集合
+
+这么说还是太抽象了. 要理解外键我们必须先理解主键. 一般而言主键就是和每一个观测(行)建立一一对应的变量或者变量的组合. 
+
+1. **airports**记录了每个机场的数据, 可以通过三位数的机场编号(`faa`)来识别每个机场， 因此`faa`就是这里的主键. 
+2. **weather**记录了出发机场的天气数据, 可以通过`origin`和`time_hour`的组合来识别每一条天气观测, 因此`origin`和`time_hour`的组合成为主键(即拥有这两个信息就可以定位到某一行, 回忆一下之前学习的`filter`函数). 
+3. **planes**记录了每一架飞机的数据, 可以通过`tailnum`来识别每一架飞机，因此`tailnum`是它的主键. 
+4. **airlines**记录了每家航空公司的全称(names)和编号(carrier). 这里的`carrier`或者`names`都可以是它的主键.
+
+
+理解了什么是主键, 外键就比较好理解了. 外键就是当我们需要连接两个数据表时, 与另一个表主键一一对应的变量或者变量组合. 比如我们希望将**flights**数据同其他数据表合并时:
+
+1. `flights$origin`是与`airports$faa`对应的外键, 同样`flights$dest`也是与`airports$faa`对应的外键
+2. `flights$origin`同`flights$time_hour`是一个组合外键，对应于`weather$origin`同`weather$time_hour`的组合
+3. `flights$tailnum`是与`planes$tailnum`对应的外键
+4. `flights$carrier`是与`airlines$carrier`相对应的外键
+
+::: {.alert .alert-tip}
+
+你可能注意到通常情况下，主键和外键的名称几乎一样，这会给我们合并增加很多便利性(其实就是偷懒不用写`by=...`这个参数)。这是因为他们通常即使在不同的数据表中也拥有相同的含义，例如 `flights$tailnum` 和 `planes$tailnum` 都指代飞机的编号。但也有例外，比如 `flights$year` 和 `planes$year` 就是指代不同的东西，前者是航班起飞的年份而后者是飞机制造的年份。
+
+当主键和外键不是同一个名称时, 例如`flights$origin`和`airports$faa`, 我们需要传递参数`by = join_by(...)`告诉数据库引擎如何正确匹配主键和外键
+:::
+
+至于如何判断某个变量或者某几个变量的组合是否可以成为主键。我们可以使用 count() 函数判断某一个变量或某几个变量的组合是否能够唯一标识一行数据且不包含缺失值，例如我们只用 year, month, day, hour 是不足以区分 weather 数据表的每一行数据的，大部分情况下每小时都有 3 个记录 (对应纽约的 3 个机场)
+
+```{r key1, exercise=TRUE}
+weather %>%
+    count(year, month, day, hour) %>%
+    count(n)
+```
+
+要注意有的数据表可能不存在主键，比如 flights 航班数据这个表，你可能会认为日期加航班号 (year, month, day, carrier, flight) 或者日期加飞机编号 (year, month, day, tailnum) 可以唯一识别每一个航班，但现实情况是某一架次航班可能一天出现多次
+
+```{r key2, exercise=TRUE}
+flights %>%
+    count(year, month, day, carrier, flight) %>%
+    count(n)
+```
+
+某些航空公司可能由于飞机数量有限，在同一天内会安排同一架次飞机进行多次飞行任务.
+
+```{r key3, exercise=TRUE}
+flights %>%
+    group_by(year, month, day, carrier, flight) %>%
+    filter(n() > 1) %>%
+    select(year, month, day, carrier, flight, dep_time, origin,
+        dest)
+```
+
+这个时候为了唯一识别每一行，我们可能得需要配合使用 row_number() 这个函数来创建一个代理键
+
+```r
+flights %>% mutate(id=row_number(), .before=1)
+```
+
+## 合并连接
+
+> 热身问题: 哪家公司的航班延误最严重?
+
+```{r join1, exercise=TRUE}
+
+```
+
+```{r join1-solution}
+flights %>% 
+  group_by(carrier) %>% 
+  summarise(avg_delay = mean(arr_delay, na.rm=TRUE)) %>% 
+  slice_max(avg_delay, n=1)
+```
+
+结果显示，在2013年纽约市地区，航空公司`F9`的延误记录最差。但是`F9`到底是哪家航空公司? 你可以通过查看`nycflights13::airlines`查看, 但假设你需要查询不只一个航司, 这样肉眼去匹配效率太低了. 
+
+更好的解决方案是将`airlines`数据集与返回的数据表进行某种连接。换句话说，让``r fa('r-project')`将`airlines`数据集里与每个航司代码相匹配的全名添加到返回的数据表中。下面我们先学习四种合并连接的方法. 这些连接之所以被称为合并连接是因为他们和`mutate`函数类似会创建新的列(变量)
+
+为了更好地说明这些`*_join*方法之间的差异, 这里我们创建两个非常简单的数据
+
+```r
+x <- tibble(id=1:3, x=paste0('x',1:3))
+y <- tibble(id=(1:4)[-3], y=paste0('y',(1:4)[-3]))
+```
+
+你可以运行这个代码看看
+
+```{r join2, exercise=TRUE}
+x
+y
+```
+
+### left join
+
+`left_join()`函数保留了第一个数据集的所有行，并且只添加了第二个数据集中与第一个数据集中的行匹配的行(外键值=主键值)。 `x3`出现在了结果里而`y4`并没有出现在结果里
+
+```{r join3, exercise=TRUE}
+x ____ y
+```
+
+```{r join3-solution}
+x %>% left_join(y, by='id')
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('left_join.png', 'left_join.gif')
+```
+
+
+### right join
+
+`right_join()`与`left_join()`刚好相反；它保留第二个数据集的每一行，只添加了第一个数据里能和第二个数据匹配的行(外键=主键)。现在`y4`出现在了结果里而`x3`并没有出现在结果里
+
+```{r join4, exercise=TRUE}
+x ____ y
+```
+
+```{r join4-solution}
+x %>% right_join(y, by='id')
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('right_join.png', 'right_join.gif')
+```
+
+### full join
+
+`left_join`和`right_join`只能保证保留某一个数据集的全部信息, 而`full_join()`会保留了每个数据集的每一行，在那些不匹配的地方用`NA`填充另一个数据集的信息. 这是唯一一个不会丢失原始数据集中任何信息的连接方式, 你可以看到`x3`和`y4`都被保留在最终结果里
+
+
+```{r join5, exercise=TRUE}
+x ____ y
+```
+
+```{r join5-solution}
+x %>% full_join(y, by='id')
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('full_join.png', 'full_join.gif')
+```
+
+### inner join
+
+`inner_join`是最保守的一种连接方式, 他只会保留那些能匹配上的行, 因此结果中只有`id=1`和`id=2`的行出现
+
+
+```{r join6, exercise=TRUE}
+x ____ y
+```
+
+```{r join6-solution}
+x %>% inner_join(y, by='id')
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('inner_join.png', 'inner_join.gif')
+```
+
+这里的例子比较简单, 我们仅仅只用了一个外键`id`来匹配. 现实情况里你可能会在`by= ...`参数中填入一系列变量, 用他们的组合来进行匹配. 你可以输入`?inner_join`, 然后读一下`by=NULL`的具体含义
+
+### 练习
+
+1. 在下面的代码里添加两行, 使得我们可以输出每一个航司的全名以及他们的平均到达延迟程度(`avg_delay`)
+
+```{r join7, exercise=TRUE}
+flights %>% 
+  drop_na(arr_delay) %>% 
+  group_by(carrier) %>% 
+  summarise(avg_delay = mean(arr_delay)) %>% 
+  arrange(desc(avg_delay))
+```
+
+```{r join7-solution}
+flights %>% 
+  drop_na(arr_delay) %>% 
+  group_by(carrier) %>% 
+  summarise(avg_delay = mean(arr_delay)) %>% 
+  arrange(desc(avg_delay)) %>%
+  left_join(airlines, by = "carrier") %>%
+  select(name, avg_delay)
+```
+
+2. 在下面的代码里添加两行, 使得我们可以知道哪一个机场的到达延迟最严重 (提示: 输入`?join_by`查看帮助文档)
+
+```{r join8, exercise=TRUE}
+flights %>% 
+  drop_na(arr_delay) %>% 
+  group_by(dest) %>% 
+  summarise(avg_delay = mean(arr_delay)) %>% 
+  arrange(desc(avg_delay))
+```
+
+```{r join8-solution}
+flights %>% 
+  drop_na(arr_delay) %>% 
+  group_by(dest) %>% 
+  summarise(avg_delay = mean(arr_delay)) %>% 
+  arrange(desc(avg_delay)) %>%
+  left_join(airports, by = join_by(dest==faa)) %>% 
+  slice_max(avg_delay, n=1)
+```
+  
+3. 将上面的`r fa('r-project')`代码转换为SQL代码 (提示: 使用`tbl_memdb`将数据写入内存数据库中)
+
+```{r join9, exercise=TRUE}
+____(flights) %>%
+  group_by(dest) %>% 
+  summarise(avg_delay = mean(arr_delay)) %>% 
+  arrange(desc(avg_delay)) %>%
+  left_join(____(airports), by = join_by(dest==faa)) %>% 
+  slice_max(avg_delay, n=1) %>%
+  _____
+```
+
+```{r join9-solution}
+tbl_memdb(flights) %>%
+  group_by(dest) %>% 
+  summarise(avg_delay = mean(arr_delay)) %>% 
+  arrange(desc(avg_delay)) %>%
+  left_join(tbl_memdb(airports), by = join_by(dest==faa)) %>% 
+  slice_max(avg_delay, n=1) %>%
+  show_query()
+```
+
+## 筛选连接
+
+不同于合并 (mutate) 连接，筛选 (filter) 连接并不会新增列，只会保留左表的变量 (列). 筛选连接 有两种类型
+
+- semi_join(x, y)：保留 x 表中与 y 表中的观测相匹配的所有观测
+- anti_join(x, y)：丢弃 x 表中与 y 表中的观测相匹配的所有观测
+
+### semi join
+
+`semi_join()`返回第一个数据集中与第二个数据集匹配的行, 但是他并不会新增来自第二个数据集的信息. 所以你不会在结果中看到`y1, y2`
+
+```{r filter1, exercise=TRUE}
+x ____ y
+```
+
+```{r filter1-solution}
+x %>% semi_join(y, by='id')
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('semi_join.png', 'semi_join.gif')
+```
+
+### anti join
+
+`anti_join()`与`semi_join`刚好相反, 它会返回第一个数据集里不能和第二个数据集匹配的行.他也不会新增来自第二个数据集的信息
+
+我们通常会使用`anti_join`返回那些由于拼写错误而无法被匹配的记录. 例如你登记姓名的时候打错了一个字, 只需要和历史记录做`anti_join`就可以立即发现不匹配的记录. 
+
+```{r filter2, exercise=TRUE}
+x ____ y
+```
+
+```{r filter2-solution}
+x %>% anti_join(y, by='id')
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('anti_join.png', 'anti_join.gif')
+```
+
+### 练习
+
+1. 找出那些没有全称信息的机场
+
+
+```{r filter3, exercise=TRUE}
+flights %>%
+  distinct(dest)
+```
+
+```{r filter3-hint-1}
+flights %>%
+  distinct(dest) %>%
+  anti_join(airports)
+```
+  
+```{r filter3-hint-2}
+flights %>%
+  distinct(dest) %>%
+  anti_join(airports, by=join_by(dest==faa))
+```
+
+2. 使用`semi_join`找到1月份**JetBlue Airways**或者2月份**Southwest Airlines Co.**的所有航班
+
+```{r filter4, exercise=TRUE}
+rules <- tibble(
+  month=c(1,2),
+  carrier=c('JetBlue Airways', 'Southwest Airlines Co.')
+)
+```
+
+
+```{r filter4-hint-1}
+rules <- tibble(
+  month=c(1,2),
+  carrier=c('JetBlue Airways', 'Southwest Airlines Co.')
+)
+rules <- rules %>% left_join(airlines)
+```
+
+```{r filter4-hint-2}
+rules <- tibble(
+  month=c(1,2),
+  name=c('JetBlue Airways', 'Southwest Airlines Co.')
+)
+rules <- rules %>% left_join(airlines)
+flights %>% semi_join(rules)
+```
+
+3. 体验一下将上面的`r fa('r-project')`代码转换为SQL代码, 有多么复杂
+
+```{r filter5, exercise=TRUE}
+rules <- tibble(
+  month=c(1,2),
+  name=c('JetBlue Airways', 'Southwest Airlines Co.')
+)
+rules <- rules %>% left_join(airlines)
+flights %>% semi_join(rules)
+```
+
+```{r filter5-solution}
+rules <- tibble(
+  month=c(1,2),
+  name=c('JetBlue Airways', 'Southwest Airlines Co.')
+) %>% tbl_memdb()
+rules <- (rules %>% left_join(airlines %>% tbl_memdb()))
+tbl_memdb(flights) %>% semi_join(rules) %>% show_query()
+```
+
+
+### 集合操作
+
+当你的两个数据集包含一模一样的变量(列)时, 你可以使用集合操作来合并两个数据集, 并且去除冗余. 想一想如果使用`bind_rows`会发生什么?
+
+我们先构造两个非常简单的数据
+
+```{r, prepare-set}
+x <- tibble(id=1:3, x=c('1','1','2'), y=c('a','b','a'))
+y <- tibble(id=1:2, x=c('1','2'), y=c('a','b'))
+```
+
+```r
+x <- tibble(id=1:3, x=c('1','1','2'), y=c('a','b','a'))
+y <- tibble(id=1:4, x=c('1','2'), y=c('a','b'))
+```
+
+### Union
+
+`union()`返回出现在两个数据集中的所有行，但会帮助你自动去重. 合并`x`和`y`后会得到4行数据. 注意你也可以用它来
+
+
+```{r set1, exercise=TRUE, exercise.setup="prepare-set"}
+x ____ y
+```
+
+```{r set1-solution}
+x %>% union(y)
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('union.png', 'union.gif')
+```
+
+### Intersect
+
+`intersect()`返回只在两个数据集中都出现的行, 同样会自动去重
+
+
+```{r set2, exercise.setup="prepare-set", exercise=TRUE}
+x ____ y
+```
+
+```{r set2-solution}
+x %>% intersect(y)
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('intersect.png', 'intersect.gif')
+```
+
+
+### Setdiff
+
+`setdiff()`返回只出现在第一个数据集中而不在第二个数据集中的所有行
+
+
+```{r set3, exercise.setup="prepare-set", exercise=TRUE}
+x ____ y
+```
+
+```{r set3-solution}
+x %>% setdiff(y)
+```
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('setdiff.png', 'setdiff.gif')
+```
+
+
+## **Tidy**数据
+
+> "Happy families are all alike; every unhappy family is unhappy in its own way" –– Leo Tolstoy 
+> 
+> "Tidy datasets are all alike, but every messy dataset is messy in its own way." –– Hadley Wickham
+
+Tidy Data 是我们进一步作图和作表的基础。首先什么是**Tidy Data**? 它需要满足以下三个条件:
+
+1. 每个变量有自己单独的列 (Each variable must have its own column)
+2. 每个观测有自己单独的行 (Each observation must have its own row)
+3. 每个值有自己单独的存储单元格 (Each value must its own cell)
+
+```{r, echo=FALSE, out.width="75%"}
+add_img('tidydata.jpg')
+```
+
+首先让我们回顾几个我反复强调的概念:
+
+1. 在数据集中, 当我们讲**变量**的时候, 就是指它的**列**
+2. 在数据集中, 当我们讲**观测**的时候, 就是指它的**行**。一个观测会包含多个值，每个值与不同的变量相关联
+
+我们先来看几个`tidyr package`中自带的数据, 它记录了 1999 年和 2000 年世界卫生组织在阿富汗、巴西和中国的一次肺结核病例调查结果。包含国家 (country), 年份 (year), 病历 (cases) 和人口 (population) 四个变量.
+
+### {.tabset}
+
+#### table1
+
+```{r}
+table1
+```
+
+#### table2
+
+```{r}
+# table1 %>% pivot_longer(cases:population, values_to = "count", names_to = "type")
+table2
+```
+
+#### table3
+
+```{r}
+# table1 %>% unite(col = "rate", cases, population, sep = "/")
+table3
+```
+
+#### table4
+
+```{r}
+# table1 %>% select(-population) %>% pivot_wider(names_from = year, values_from = cases) 
+table4a
+```
+
+###  
+
+这里只有第一个数据表是**Tidy**的
+- 第二个表的问题在于违反了第二条规则，type 不是一个变量，它的值 cases 和 population 才是变量名，现在每两行 (cases/population)
+- 第三个表的问题在于违反了第三条规则，一个单元格中包含了多个信息，这里同时包含了 cases 和 population 的信息
+- 最后一个表格违反了第一条规则，1999 和 2000 不是变量，而是一个表示年份的变量的值
+
+```{r, echo=FALSE}
+yuanshen %>% head()
+```
+
+```{r quiz-tidy, echo = FALSE}
+question("看一看上面这个数据有什么问题, 选出所有正确的选项",
+   answer("第一列的值才是变量"),
+   answer("第二列包含了多个信息", correct=TRUE),
+   answer("第三列的值才是变量", correct=TRUE),
+   answer("第2,3,4列不是变量而是一个表示属性的值")
+)
+```
+
+将数据**Tidy**的好处很多, `r fa('r-project')`将每个dataframe存储为一个长度相等的vector的list，这极大地提高了从数据框中提取列向量的效率。**Tidy Data**将每个变量放在自己的列向量中，这使得在计算中提取和使用这些列向量变得更方便. 我们在作表和作图前往往需要先把数据**Tidy**以配合那些别人写好的函数
+
+
+## 长宽切换
+
+为了得到下一步画图和作表所需要的 Tidy Data, 我们经常需要化宽为长 (较为常见) 或化长为宽
+
+- `pivot_longer`通过增加行数和减少列数使数据集更长，这个在画图时涉及分类变量，例如 size, color 时，尤其有必要
+- `pivot_wider` 则与 `pivot_longer` 刚好相反，它通过增加列数和减少行数来使数据集更宽
+
+### pivot longer
+
+让我们来看一下这个函数的API。它有很多高级功能，比如如何将一个值拆分成多个值，但在这里我们不会涉及到这些。如果你感兴趣的话，可以自己学习。你需要掌握的用法就是熟悉下面这个函数及其每一个参数的用法
+
+```r
+pivot_longer(data, cols, names_to='name', values_to='value', convert=FALSE)
+```
+
+| 参数 | 含义 |
+| :--- | :---------------------- |
+| data | 数据表 |
+| cols | 哪些列需要被整合成key-value对 (高级用法支持一对多列) |
+| names_to | 整合后key那一列的名称, 它的值就是原来那些列的名称 | 
+| values_to | 整合后value那一列的名称, 它的值就是原来那些列的值 | 
+| names_transform | 更改列的变量类型, 避免变量名被自动识别为字符串 |
+
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('pivot_longer.jpg', 'pivot_longer.gif')
+```
+
+### 练习
+
+1. 使用`pivot_longer`将`wide`变成`long`
+
+```{r reshape1, exercise=TRUE}
+wide
+```
+
+```{r reshape1-solution}
+wide %>% pivot_longer(names_to='key')
+```
+
+2. 把`table4a`给**tidy**一下
+
+```{r reshape2, exercise=TRUE}
+table4a %>% pivot_longer()
+```
+
+```{r reshape2-solution}
+table4a %>% pivot_longer(cols=2:3, names_to='year', values_to='population', names_transform=list(year=as.integer))
+```
+
+3. 把上面这行代码转换成SQL代码
+
+```{r reshape3, exercise=TRUE}
+table4a %>% pivot_longer()
+```
+
+
+```{r reshape3-solution}
+tbl_memdb(table4a) %>% pivot_longer(cols=2:3, names_to='year', values_to='population', names_transform=list(year=as.integer)) %>% show_query()
+```
+
+```{r quiz-pivot, echo = FALSE}
+question("回忆我们在`dplyr::select`中所学到的知识, 判断下列哪些方法可以 **Tidy** table4a",
+   answer("table4a %>% pivot_longer(cols=2:3)", correct=T),
+   answer("table4a %>% pivot_longer(cols=1999:2000)"),
+   answer("table4a %>% pivot_longer(cols=-country)", correct=T),
+   answer("table4a %>% pivot_longer(cols=c('1999','2000'))", correct=T)
+)
+```
+
+> 你可以输入`?tidyr::tidyr_tidy_select`查看所有支持的<tidy-select>函数
+
+### pivot wider
+
+让我们来看一下这个函数的API。它基本上是`pivot_longer`的逆操作. 与使用pivot_longer时需要考虑转换后的变量类型是否符合直觉不同，使用spread时需要考虑的是在将数据从长格式转换为宽格式后可能会产生大量缺失值的情况。
+
+
+```r
+pivot_wider(data, names_from=, values_from=, values_fill=NULL)
+```
+
+| 参数 | 含义 |
+| :--- | :---------------------- |
+| data | 数据表 |
+| names_from | 哪一列是key, 这一列的值会作为新的变量名 | 
+| values_from | 哪一列是value, 这一列的值会被填充为新变量的值 | 
+| values_fill | 如何替换缺失值, 这里要使用`named vector`而不是`list` |
+
+
+```{r, echo=FALSE, out.width="50%"}
+add_img('pivot_wider.jpg', 'pivot_wider.gif')
+```
+
+1. 使用`pivot_wider`将`long`变成`wide`
+
+```{r reshape4, exercise=TRUE}
+long
+```
+
+```{r reshape4-solution}
+long %>% pivot_wider(names_from=key, values_from=value)
+```
+
+2. 将下面这个去掉了第一行数据的`table2`给**tidy**一下, 并且用那一列的平均值替换缺失值
+
+```{r reshape5, exercise=TRUE}
+table2 %>% filter(row_number() != 1) 
+```
+
+```{r reshape5-solution}
+table2 %>% filter(row_number() != 1) -> data
+avg_case <- data %>% filter(type=='cases') %>% summarise(avg=mean(count, na.rm=TRUE))
+data %>% pivot_wider(names_from=type, values_from=count, values_fill=c(cases=avg_case$avg)) 
+```
+
+3. 把上面这行代码转换成SQL代码 (我暂时没找到`dbplyr`支持lazy evaluation的办法, 所以这里只能先将平均值计算出来带入)
+
+```{r reshape6, exercise=TRUE}
+table2 %>% tbl_memdb() %>% filter(row_number() != 1) -> data
+```
+
+
+```{r reshape6-solution}
+table2 %>% tbl_memdb() %>% filter(row_number() != 1) -> data
+data %>% pivot_wider(names_from=type, values_from=count, values_fill=c(cases=109383)) %>% show_query()
+```
+
+
+4. 我们看一个从1880到2015年, 每年出生男女人数的数据`babynames`. 请帮我计算新生儿中女生比例随时间的变化 (提示: 结果应该符合右图)
+
+```{r, echo=FALSE, out.width="50%", fig.show='hold', cache=TRUE}
+babynames %>%
+  ggplot() + geom_line(aes(year, total, color = sex))
+
+babynames %>% pivot_wider(names_from=sex, values_from=total) %>%
+  mutate(ratio = F / (F+M)) %>% ggplot(aes(year, ratio)) + geom_line()
+```
+
+```{r reshape7, exercise=TRUE}
+babynames
+```
+
+```{r reshape7-solution}
+babynames %>% pivot_wider(names_from=sex, values_from=total) %>% mutate(ratio = F / M) 
+```
+
+> 所以一个数据是否**tidy**取决于我们的分析目的, 当我们使用`year`来绘制新生儿男女性别走势时, 数据已经是**tidy**可用了, 但当我们需要计算男女性别比例时, 它的第二列`sex`却违背了之前所列的三条规则. 在作图前先问问自己画图所需要的元素是否都处在单独的一列里
+
+:::: two-col
+::: {}
+$$x = \text{year}$$
+$$y = \text{total}$$
+$$color = \text{sex}$$
+
+```{r}
+babynames %>% head()
+```
+:::
+::: {}
+我们需要保证`year`, `ratio`, `female`, `male`都在自己单独的一列上:
+
+$$\text{ratio} = \frac{\text{F}}{\text{F} + \text{M}}$$
+
+```{r}
+babynames %>% pivot_wider(names_from=sex, values_from=total) %>% head()
+```
+:::
+::::
+
+## 拆分/合并
+
+除了长宽变换之外, 有的时候我们还需要合并/拆分单元格, 这个在作表的时候尤其有用. 这里介绍两个常用的函数:
+
+- `separate()`: 将单元格列分隔成多个列
+- `unite()`: 将多个单元格列合并成单个列
+
+为了说明这两个函数的用法，我们将以原神游戏的[主要人物数据](https://genshin-impact.fandom.com/wiki/Genshin_Impact_Wiki)作为分析的示例数据。
+
+```{r}
+yuanshen %>% head()
+```
+
+可以看到它有4列, 分别是`人物名称`, `人物模型`, `属性`和`值`. 经过刚刚的学习, 你应该意识到这很可能是一个`untidy`数据, 因为第二列同时包含了身高(height)和性别(sex), 而且第三列的属性值应该被视为变量名而不是变量的值. 让我们先用`pivot_wider`来转换一下这个数据
+
+```{r unite0, exercise=TRUE}
+
+```
+
+```{r unite0-solution}
+yuanshen %>% pivot_wider(names_from = attr, values_from = value) 
+```
+
+
+### separate
+
+如果你输入`?separate`会发现在**Description**下方有一个`lifecycle: superseded`的提示, 它表示这个函数不会再接受更新, 只会修复比较严重的错误, 作者推荐使用`separate_wider_delim`这个函数. 但是`superseded != deprecated`, 所以我们可以一直用这个函数来拆分单元格. 我们先看看它的API:
+
+```r
+separate(data, col, into, sep="[^[:alnum:]]+", remove=TRUE, convert=FALSE, extra='warn', fill='warn')
+```
+
+| 参数 | 含义 |
+| :--- | :---------------------- |
+| data | 数据表 |
+| col | 哪一列需要被拆分 | 
+| into |填写一个字符向量, 作为拆分后单元格的变量名| 
+| sep | 根据什么拆分单元格, 默认是在任何非字母数字字符（如`-、,、/`）的位置进行拆分|
+| remove | 是否移除`col`输入列 | 
+| convert | 是否自动判断变量类型并转换 | 
+| extra | 如何处理多余的拆分, 是否合并那些值还是丢弃掉 | 
+| fill | 如果拆分不足的时候 < length(into), 怎么处理 | 
+
+
+```{r yuanshen-prep}
+yuanshen %>% pivot_wider(names_from = attr, values_from = value) -> yuanshen
+```
+
+```{r unite1, exercise=T, exercise.setup='yuanshen-prep'}
+yuanshen %>% separate(col=name, into=c('before_o', 'after_o'), sep='o')
+```
+
+可以看到有5个人物的姓名包含了超过一个字母`o`, 有37个人物姓名不包含一个字母`o`.   当然这里最明显的问题还是第二列`model_type`同时包含了身高(height)和性别(sex), 我们可以使用`separate`将它拆分
+
+```{r unite2, exercise=TRUE}
+yuanshen
+```
+
+```{r unite2-solution}
+yuanshen %>% separate(col=model_type, into=c('height', 'sex'))
+```
+
+```{r unite-prep}
+yuanshen %>% pivot_wider(names_from = attr, values_from = value) %>% 
+  separate(col=model_type, into=c('height', 'sex')) -> yuanshen
+```
+
+```{r untie3, exercise=TRUE, exercise.setup='unite-prep'}
+yuanshen
+```
+
+这里的`sep`也可以是整数, separate()函数将根据指定的位置来分割值
+- sep = 1将在第一个字符后分割值
+- sep = -2将在倒数第二个字符后分割值(不是取否的意思)，无论值中有多少个字符。换句话说，它将分割掉每个值的最后一个字符
+- sep = c(2, 4, 6)将在第二、第四和第六个字符后分割值，创建四列
+
+比如说我们希望提取`Male/Female`的首字母, 我们可以搭配`sep`和`extra`参数实现
+
+```{r unite3, exercise=TRUE, exercise.setup='unite-prep'}
+yuanshen
+```
+
+```{r unite3-solution}
+yuanshen %>% separate(col=sex, into='sex', sep=1, extra='drop')
+```
+
+### unite
+
+`unite`和`separate`完全相反, 它被用来合并多个单元格. 它的API比较简单
+
+```r
+unite(data, col, ..., sep = "_", remove = TRUE, na.rm = FALSE)
+```
+
+| 参数 | 含义 |
+| :--- | :---------------------- |
+| data | 数据表 |
+| col  | 合并后的列名称 | 
+| ...  | 需要被合并的列 | 
+| sep | 根据什么拆分单元格, 默认是在任何非字母数字字符（如`-、,、/`）的位置进行拆分|
+| remove | 是否保留`col`输入列 | 
+| na.rm | 是否移除合并后的缺失值 | 
+
+比如这里我们把人物所属国家, 元素, 性别合并成一个值`code`, 并用":"连接 
+
+```{r unite4, exercise=TRUE, exercise.setup='unite-prep'}
+yuanshen
+```
+
+```{r unite4-solution}
+# 这些都可以
+yuanshen %>% unite('code', region, element, sex, sep=':')
+yuanshen %>% unite('code', c('region', 'element', 'sex'), sep=':')
+yuanshen %>% unite('code', c(6,4,3), sep=':')
+```
+
+
+## 练习
+
+最后我们回顾刚刚学习的几种`tidy method`, 包括我们之前学的`dplyr`函数, 完成下面这个练习
+
+我们使用世界卫生组织发布的结核病历. 它包含了60个变量, 7240条观测, 它的前四个值分别是: 1) 国家(country); 2) 国家代号(iso2); 3) 国家代号(iso3) 以及调查年份(year).
+
+:::: two-col
+::: {}
+```{r}
+who %>% head()
+```
+:::
+::: {}
+从第5到剩下的第60个变量都是包含了多个信息的代码, 且符合统一的格式, 例如`new_sp_m014`可以被理解为:
+
+```{r echo=FALSE, fig.align='center'}
+add_img('who.png')
+```
+:::
+::::
+
+你将通过下面的练习, 把数据最终**Tidy**为这个样子, 你可以先想想应该怎么做
+
+```{r, echo=FALSE}
+who %>% select(-c(2,3)) %>% 
+  pivot_longer(cols=3:58, names_to='codes', values_to='n') %>%
+  separate(codes, into = c("new", "type", "gender"), sep = "_") %>%
+  separate(gender, into = c("gender", "age"), sep=1, convert=TRUE) %>%
+  drop_na() %>% 
+  select(-new) %>%
+  mutate(year = as.integer(year), n = as.integer(n))
+```
+
+### 第一步
+
+去掉和最终结果无关的信息, 即第二列和第三列
+
+```{r ex1, exercise = TRUE}
+
+```
+
+```{r ex1-solution}
+who %>% select(-c(2,3))
+```
+
+### 第二步
+
+将剩下第3到第58列信息合并: 统一将这些列的值存放在变量`n`中, 将这些列的名称存放在`codes`当中. 
+
+```{r ex11, exercise = TRUE}
+who %>% select(-c(2,3))
+```
+
+```{r ex11-solution}
+who %>% select(-c(2,3)) %>% 
+  pivot_longer(cols=3:58, names_to='codes', values_to='n')
+```
+
+### 第三步
+
+拆分单元格: 提取`codes`代码中的三个部分, 分别命名为`new`, `type`和`gender`. 
+
+```{r ex12, exercise = TRUE}
+who %>% select(-c(2,3)) %>% 
+  pivot_longer(cols=3:58, names_to='codes', values_to='n') 
+```
+
+```{r ex12-solution}
+who %>% select(-c(2,3)) %>% 
+  pivot_longer(cols=3:58, names_to='codes', values_to='n') 
+  separate(codes, into = c("new", "type", "gender"), sep = "_")
+```
+
+### 第四步
+
+我们需要将`gender`代码进一步分解为`gender`和`age`. 同时记得调整年龄的数据类型
+
+```{r ex13, exercise = TRUE}
+who <- who %>% select(-c(2,3)) %>% 
+  pivot_longer(cols=3:58, names_to='codes', values_to='n') %>%
+  separate(codes, into = c("new", "type", "gender"), sep = "_")
+```
+
+```{r ex13-solution}
+who %>% select(-c(2,3)) %>% 
+  pivot_longer(cols=3:58, names_to='codes', values_to='n') %>%
+  separate(codes, into = c("new", "type", "gender"), sep = "_") %>%
+  separate(gender, into = c("gender", "age"), sep=1, convert=TRUE)
+```
+
+
+### 第五步
+
+最后可以去掉缺失值, 以及不需要的变量, 然后转换特定变量的类型
+
+```{r ex14, exercise = TRUE, exercise.setup = "ex13"}
+who %>% separate(gender, into = c("gender", "age"), sep=1) %>%
+  drop_na() %>% 
+  select(-new) %>% 
+  mutate(year = as.integer(year), n = as.integer(n))
+```
+
+
+
+
+
+

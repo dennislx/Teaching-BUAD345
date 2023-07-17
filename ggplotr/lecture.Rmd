@@ -1,0 +1,798 @@
+---
+title: "如何使用.secondary[GGPLOT]作图"
+author: Xiang Liu
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    fig_caption: FALSE
+    includes:
+      after_body: style.html
+    css: [style.css]
+    nature:
+      titleSlideClass: [middle, center, inverse]
+      slideNumberFormat: "%current%"
+      highlightStyle: github
+      highlightLines: true
+      ratio: 16:9
+      countIncrementalSlides: true
+      countdown: 120000
+---
+
+```{r setup, include = FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+    fig.width = 6, fig.height = 6, fig.retina = 3, out.width = "100%",
+    echo = TRUE, message = FALSE, warning = FALSE, fig.show = TRUE,
+    hiline = TRUE, cache = FALSE, comment = ""
+)
+pacman::p_load(
+    formatR, fontawesome, xaringanExtra, flipbookr, tidyverse, gt, here,
+    ggridges, ggforce, patchwork, gapminder
+)
+pacman::p_load_gh("hadley/emo")
+add_www <- function(file = ".", cwd = getwd()) {
+    here::here(cwd, "www", file)
+}
+add_img <- function(x, ...) {
+    if (length(list(...)) == 0) {
+        knitr::include_graphics(add_www(x))
+    } else {
+        knitr::include_graphics(sapply(c(x, ...), FUN = add_www))
+    }
+}
+```
+
+```{css, echo = FALSE}
+.remark-code{line-height: 1.5; font-size: 80%}
+.right-column { padding-top: 0; }
+.left-code { color: #777; width: 38%; height: 92%; float: left; }
+.right-plot { width: 60%; float: right; padding-left: 1%; }
+
+```
+
+```{r xaringan-extra, echo = FALSE}
+xaringanExtra::use_scribble()
+xaringanExtra::use_clipboard()
+xaringanExtra::use_tile_view()
+xaringanExtra::use_fit_screen()
+xaringanExtra::use_panelset()
+```
+
+```{r setup-data, include=FALSE, cache=TRUE}
+load(add_www("data.rda"))
+extract_first <- function(words) {
+    str_extract(words, "\\b\\w+\\b") %>%
+        tolower() %>%
+        trimws()
+}
+
+age_select <- c("16 to 24 years", "25 to 54 years", "55 years and over")
+salary <- earn %>%
+    select(-ethnic_origin) %>%
+    mutate(
+        race = case_when(
+            grepl("^All", race) ~ NA,
+            TRUE ~ extract_first(race)
+        ),
+        sex = case_when(
+            sex %in% c("Men", "Women") ~ tolower(sex),
+            TRUE ~ "other"
+        ),
+        age = case_when(
+            age == "16 to 24 years" ~ "young",
+            age == "25 to 54 years" ~ "adult",
+            age == "55 years and over" ~ "old",
+            TRUE ~ NA
+        ),
+        n_persons = n_persons / 1000 # change unit to K
+    ) %>%
+    rename(earning = median_weekly_earn) %>%
+    drop_na()
+
+worker <- employed %>%
+    rowwise() %>%
+    mutate(
+        sex = case_when(
+            race_gender %in% c("Men", "Women") ~ extract_first(race_gender),
+            TRUE ~ NA
+        ),
+        race = case_when(
+            race_gender %in% c("White", "Black or African American", "Asian") ~ extract_first(race_gender),
+            TRUE ~ NA
+        )
+    ) %>%
+    ungroup() %>%
+    select(-race_gender) %>%
+    rename(major = major_occupation, minor = minor_occupation) %>%
+    mutate(
+        industry = case_when(
+            grepl("^Durable", industry) ~ "appliance",
+            grepl("^NonDurable", industry) ~ "consumable",
+            grepl("Wholesale trade", industry) ~ "wholesale",
+            grepl("Retail trade", industry) ~ "retail",
+            grepl("Professional", industry) ~ "business",
+            grepl("Education", industry) ~ "education&health",
+            grepl("Public administration", industry) ~ "government",
+            grepl("Leisure and hospitality", industry) ~ "hospitality",
+            grepl("Private households", industry) ~ "domestic",
+            grepl("Other services, except private households", industry) ~ NA,
+            TRUE ~ extract_first(industry)
+        ),
+        major = case_when(
+            grepl("Natural resources, construction, and maintenance occupations", major) ~ "construction",
+            grepl("Production, transportation, and material moving occupations", major) ~ "transportation",
+            TRUE ~ extract_first(major)
+        ),
+        minor = case_when(
+            grepl("Management, business, and financial operations occupations", minor) ~ "business",
+            grepl("Manage-ment, business, and financial operations occupations", minor) ~ "business",
+            grepl("Installation, maintenance, and repair occupations", minor) ~ "maintenance",
+            TRUE ~ extract_first(minor)
+        ),
+    )
+
+worker.sex <- worker %>%
+    select(-race) %>%
+    drop_na()
+worker.race <- worker %>%
+    select(-sex) %>%
+    drop_na()
+```
+
+---
+
+class: top, left
+
+## GGplot 图层细分
+
+.pull-left[
+- **Data**: 数据
+
+- **.hlb[Aes]thetic 映射**: `ggplot()`图层
+
+- **.h1b[Geom]etric objects**: 决定了图长什么样子
+
+- **.hlb[Facet]s**: 怎么组合多张图
+
+- **.hlb[Stat]istics**: 和.h1b[Geom]类似, 但显示的是统计指标
+
+- **.hlb[Coord]inates**: 桌布边界(limits)等设置
+
+- **.hlb[Theme]**: 主题, 包括字体, 颜色, 形状等
+
+
+]
+.pull-right[
+```{r, echo = FALSE}
+add_img("gglayers.png")
+```
+]
+
+---
+
+
+class: top, left
+
+## AES 映射
+
+```{r, out.width="100%", echo = F}
+add_img("gg_aes.png")
+```
+
+---
+
+`r chunk_reveal("first_aes", width = c(50,50), chunk_options="cache=TRUE", title="#### AES 属性")`
+
+```{r first_aes, eval = F, echo = F}
+salary %>%
+    # 将数据传入ggplot
+    ggplot() +
+    # 在ggplot图层里添加一个 x 轴
+    aes(x = sex) +
+    # 在ggplot图层里添加一个 y 轴
+    aes(y = earning) +
+    # 添加一个新的图层, geom_point, 继承ggplot图层的 x 和 y 信息
+    geom_point() +
+    # 在geom_point图层里, 为不同年龄的数据添加颜色区分
+    aes(color = age) +
+    # 在geom_point图层里, 为不同性别的数据添加形状区分
+    aes(shape = sex) +
+    # 在geom_point图层里, 用大小体现观测中的就业人数
+    aes(size = n_persons) +
+    # 在geom_point图层里, 给不同年龄的数据添加透明度区分
+    aes(alpha = age) +
+    # 修改geom_point图层里的颜色属性
+    aes(color = race)
+```
+
+---
+
+`r chunk_reveal("second_aes", break_type = "rotate", width = c(55,45), font_size_code="110%", chunk_options="fig.height=5, cache=TRUE", title="#### AES 继承")`
+
+```{r second_aes, eval = F, echo = F}
+salary %>%
+    ## 生成一个ggplot对象
+    ggplot() +
+    aes(x = sex, y = earning, color = age) +
+    ## 更改映射信息, 但x轴的标题没有改变
+    geom_point() #ROTATE
+    geom_point(aes(x = n_persons)) #ROTATE
+    ## 增加映射信息
+    geom_point() #ROTATE
+    geom_point(aes(shape = sex), alpha = 0.7, color = "green") #ROTATE
+    ## 更改映射信息, 但图例标题没有改变
+    geom_point() #ROTATE
+    geom_point(aes(color = race, y = 0)) #ROTATE
+```
+
+---
+
+class: top, left
+
+## Geom 画什么图
+
+.center[
+```{r, out.width="60%", echo = F}
+add_img("gg_geom.png")
+```
+]
+
+???
+
+几个比较常用的图, 更多请参考ggplot Cheatsheet
+
+---
+
+## Geom 画什么图
+
+```r
+geom_*(mapping, data, stat, position)
+```
+
+- `data`: 局部数据, 但最好可以映射到全局坐标系
+
+- `map`: 局部组件, 会继承全局组件属性
+
+.center[
+```{r, out.width="40%", echo = F}
+add_img("gg_cheat.png")
+```
+]
+
+---
+
+class: inverse, center, middle
+
+## Geom: 分布
+
+---
+
+`r chunk_reveal("first_geom", break_type="rotate", width = c(50,50), font_size_code="90%", chunk_options="fig.height=5, cache=TRUE", title="#### Frequency & Distribution 演示")`
+
+
+```{r first_geom, eval = F, echo = F}
+salary %>%
+    filter(year == 2020) %>%
+    ## 生成一个ggplot对象
+    ggplot(aes(x = earning)) +
+    ## 生成一个直方图
+    geom_histogram(alpha = .5, fill = "cadetblue") + #ROTATE
+    ## 生成一个频率多边形
+    geom_freqpoly(linetype = "dashed") + #ROTATE
+    ## 生成一个点状图, 每个点代表一个观测
+    geom_dotplot(fill = "blue", alpha = .5) + #ROTATE
+    ## 从频次图到频率图
+    geom_histogram(col = "black", fill = "maroon4", alpha = .4, aes(y = ..density..)) + #ROTATE
+    ## 生成一个频率分布图, 用散点表示
+    geom_density(linetype = "dotted", adjust = 1 / 4, size = 1.25) + #ROTATE
+    ## 分组频率分布图
+    geom_density(alpha = 0.2, aes(fill = race)) + #ROTATE
+    theme_minimal()
+```
+
+---
+
+class: inverse, center, middle
+
+## Geom: 分组分布
+
+---
+
+`r chunk_reveal("second_geom", break_type="rotate", width = c(49,50), font_size_code="90%", chunk_options="fig.height=5, cache=TRUE", title="#### Group By 演示")`
+
+```{r second_geom, eval = F, echo = F}
+salary %>%
+    filter(year == 2020, sex != 'other', race != 'asian') %>%
+    unite("race_sex", race, sex) %>%
+    ggplot(aes(x = earning, y = race_sex)) +
+    geom_point() +  
+    ## 生成一个箱图
+    geom_boxplot(width = .2, outlier.shape = NA, alpha = 0.5) + #ROTATE
+    ## 生成一个箱图和密度分布图的结合
+    geom_violin(alpha = .1) + #ROTATE
+    ## 标记这个组别的平均数
+    stat_summary(fun.y = mean, geom = "point", col = "goldenrod2", size = 4) + #ROTATE
+    ## 山脊图, 分布可视化
+    ggridges::geom_density_ridges(scale = .7, alpha = .2, fill = "blue") + #ROTATE
+    ## 山脊图, 同时显示95%置信区间
+    ggridges::stat_density_ridges( quantile_lines = TRUE, quantiles = c(0.025, 0.975), alpha = 0.5, fill="plum4") + #ROTATE
+    ## 叠加多种图形, 这里同时显示分布和箱图
+    ggridges::geom_density_ridges(scale = .7) +  geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.5) + #ROTATE
+    theme_minimal() +
+    labs(y = NULL)
+```
+
+---
+
+class: inverse, center, middle 
+
+## Geom: 时间序列
+
+---
+
+---
+
+`r chunk_reveal("third_geom", break_type = "rotate", width = c(45,54), font_size_code="80%", chunk_options="fig.height=5, cache=TRUE", title="#### Data Series 演示")`
+
+```{r third_geom, echo=F, eval=F}
+position_shift <- position_dodge(width = 0.9)
+salary %>% 
+  filter(sex == 'men', age == 'adult') %>% 
+  group_by(year, race) %>% 
+  summarise(earning = mean(earning, na.rm = TRUE)) %>% 
+  ggplot(aes(x=year, y=earning, fill=race)) +
+  ## 生成一个散点图
+  geom_jitter(position=position_shift) +
+  ## 生成柱状图
+  geom_col(alpha=0.5, position='dodge') + #ROTATE
+  ## 每一年生成一个向下的箭头
+  geom_segment(aes(xend = year, yend = 0, color = race), arrow = arrow(), position=position_shift) + #ROTATE
+  ## 直线拟合散点
+  geom_line(aes(color = race)) + #ROTATE
+  ## 曲线拟合散点
+  geom_smooth() + #ROTATE
+  ##  毛笔效果
+  ggforce::geom_link2(aes(color = race, linewidth=race), lineend = 'round', alpha = .5) + #ROTATE
+  ## 生成一个区间图
+  geom_ribbon(aes(ymin=earning-50, ymax=earning+50, fill=race), alpha = .4, color = "plum1") + #ROTATE
+  ## 生成群体之间的差
+  geom_line(aes(group=year), color="#3d405b", size=0.7) + geom_point(aes(color=race), size=10, show.legend=FALSE) + geom_text(aes(label=paste0("$",round(earning))), size=2.5, color="white") + #ROTATE
+  scale_x_continuous(breaks=2010:2020) +
+  theme_minimal()
+```
+
+---
+
+class: inverse, center, middle 
+
+## Geom: 双变量
+
+---
+
+`r chunk_reveal("fourth_geom", break_type = "rotate", width = c(45,54), font_size_code="80%", chunk_options="fig.height=5, cache=TRUE", title="#### Bivariate 演示")`
+
+```{r fourth_geom, echo=F, eval=F}
+
+salary %>% 
+    filter(year==2020) %>%
+    unite('group', age, sex, race, remove=FALSE) %>%
+    ggplot(aes(x=n_persons, y=earning, fill=race)) +
+    coord_cartesian(xlim=c(0,20000), ylim=c(400, NA)) +
+    ## 生成一个散点图
+    geom_point() +
+    ## 绘制放射图
+    geom_segment(aes(xend = 15000, yend = 800), alpha = .2) + #ROTATE
+    ## 绘制曲线放射图
+    geom_curve(aes(xend = 15000, yend = 800), linetype = "dotted") + #ROTATE
+    ## 绘制不等宽柱形图
+    geom_rect(aes(xmin=10000, ymin=800,xmax=n_persons, ymax=earning), alpha=.02, fill="magenta",color="grey") + #ROTATE
+    ## 添加文本标签
+    geom_text(aes(label = group), check_overlap = TRUE) + #ROTATE
+    geom_label(aes(label = group)) + #ROTATE
+    ## 绘制等高线图(核密度图)
+    geom_density2d() + #ROTATE
+    ## 添加趋势线
+    geom_smooth() + #ROTATE
+    geom_smooth(method="lm") + #ROTATE
+    ## 统计每一个六边形区域内点的个数
+    geom_hex(binwidth=c(2000,100), alpha = .5,color = "white") + #ROTATE
+    ## 多边形图
+    geom_polygon(alpha = 0.5, fill = "plum4") + #ROTATE
+    theme_bw()
+```
+
+---
+
+class: top, left
+
+## Facet: 分面
+
+- facet_wrap(facets, nrow=?, ncol=?): 将多个图拉长, 然后包装成2d
+
+- facet_grid(rows=?, cols=?): 2d由两个独立的组件(rows, cols)组成
+
+.center[
+```{r, out.width="50%", echo = F}
+add_img("gg_facet.png")
+```
+]
+
+---
+
+`r chunk_reveal("first_facet", break_type = "rotate", width = c(45,54), font_size_code="100%", chunk_options="fig.height=5, cache=TRUE", title="#### Facet Wrap 演示")`
+
+```{r first_facet, echo=F, eval=F}
+salary %>% filter(year==2020) %>%
+  ggplot() +
+  aes(x=n_persons, y=earning, color=age) +
+  geom_point() +  
+  ## 生成一个散点图
+  NULL  #ROTATE 
+  ## 一个变量, 横着排列
+  facet_wrap("age")  #ROTATE 
+  ## 可以用vars函数替代引号
+  facet_wrap(vars(age))  #ROTATE 
+  ## 一个变量, 自动换行
+  facet_wrap(vars(age), nrow=2)  #ROTATE 
+  ## 不再共享x轴和y轴, 请看帮助文档
+  facet_wrap(vars(age), nrow=2, scales="free")  #ROTATE 
+  ## 两个变量, 笛卡尔组合
+  facet_wrap(vars(age, sex), nrow=3) #ROTATE 
+  ## 改变标签的位置
+  facet_wrap(vars(age, sex), ncol=2, strip.position="left")   #ROTATE
+```
+
+---
+
+`r chunk_reveal("second_facet", break_type = "rotate", width = c(45,54), font_size_code="80%", chunk_options="fig.height=5, cache=TRUE", title="#### Facet Grid 演示")`
+
+```{r second_facet, echo=F, eval=F}
+salary %>% filter(year==2020) %>%
+  ggplot() +
+  aes(x=n_persons, y=earning, color=age) +
+  geom_point() +  
+  ## 生成一个散点图
+  NULL  #ROTATE
+  ## 从上到下排列
+  facet_grid(rows=vars(age))  #ROTATE
+  ## 从左到右排列
+  facet_grid(cols=vars(age))  #ROTATE
+  ## 也可以用 行~列 这种公式表示
+  facet_grid(race ~ (n_persons > 8000))  #ROTATE
+  ## 对比一下face_wrap函数的结果
+  facet_wrap(race ~ (n_persons > 8000))  #ROTATE
+  ## 使用ggforce函数放大某一个范围
+  ggforce::facet_zoom(xlim=c(0, 10000))  #ROTATE
+  ## 使用ggforce函数放大数据集某一区域
+  ggforce::facet_zoom(x=(n_persons<10000), y=between(earning, 750, 1000), horizontal = FALSE)  #ROTATE
+```
+
+---
+
+class: top, left
+
+## 统计转换
+
+一个图层由这么几个东西组成
+
+.pull-left[
+- 数据data
+  
+- 美学映射mapping
+  
+- 几何形状geom
+  
+- 统计变换stat
+  
+- 位置调整position
+]
+.pull-right[
+```r
+# 比如geom_point()函数可以表示为
++ layer(
+  mapping = NULL, 
+  data = NULL,
+  geom = "point", 
+  stat = "identity",
+  position = "identity"
+)
+```
+]
+
+???
+- 每个图层都可以来自不同的数据集并具有不同的映射
+- 有些函数必须包含某些元素
+
+---
+
+`r chunk_reveal("stat_layer", width = c(45,54), font_size_code="80%", chunk_options="fig.height=5, cache=TRUE", title="#### 图层范例")`
+
+```{r stat_layer, echo=F, eval=F}
+stats::loess(hwy ~ displ, data = mpg) -> 
+    mod
+tibble(displ = seq(min(mpg$displ), max(mpg$displ), length = 50)) -> 
+    grid
+stats::predict(mod, newdata = grid) ->
+    grid$hwy
+filter(mpg, abs(mod$residuals/mod$s) > 2) -> 
+    outlier
+
+mpg %>%
+    ggplot(aes(displ, hwy)) + 
+    geom_point() + 
+    # 局部数据, x,y 映射继承
+    geom_line(data = grid, colour = "blue", linewidth = 1.5) + 
+    # 局部数据, x,y 映射继承, label
+    geom_text(data = outlier, aes(label = model)) + 
+    theme_classic()
+```
+---
+
+`r chunk_reveal("stat_stat", width = c(45,54), font_size_code="80%", chunk_options="fig.height=5, cache=TRUE", title="#### stat & position 参数")`
+
+```{r stat_stat, echo=F, eval=F}
+mpg %>%
+    ggplot(aes(trans, cty)) + 
+    geom_point(alpha = 0.1) +
+    coord_flip() +
+    geom_point(
+        stat = "summary", colour = "red", 
+        size = 2, fun = "median" 
+    )  ->
+a
+
+ggplot2::diamonds %>%
+    ggplot(aes(color, fill = cut)) +
+    geom_line(
+        # 去掉stat=count会报错
+        aes(group = cut), stat = "count"
+    ) +
+    geom_bar(
+        # position的默认值是什么
+        position = "identity", alpha = 1/2, colour = "grey50"
+    )
+```
+
+---
+
+class: top, left
+
+## 位置调整
+
+.pull-left[
+条形图位置调整:
+
+- position_stack ()：将重叠的条形（或区域）堆叠在彼此的顶部
+- position_fill ()：堆叠重叠的条形，缩放以使顶部始终为100%
+- position_dodge ()：并排放置重叠的条形图（或箱线图）
+]
+.pull-right[
+散点图位置调整:
+
+- position_nudge ()：将点移动固定的偏移量，特别适合将标签移动到距其所标记的内容一小段距离
+- position_jitter ()：向每个位置添加一点随机噪声
+- position_jitterdodge ()：避开组内的点，然后添加一点随机噪声
+]
+
+---
+
+class: top, left
+
+## 位置调整
+
+.center[
+```{r, out.width="100%", echo = F}
+add_img("gg_pos.png")
+```
+]
+
+---
+
+class: inverse, center, middle
+
+## Modifiers
+
+```{r setup-modfifier}
+gapminder_2002 <- gapminder %>% filter(year==2002)
+```
+
+---
+
+class: top, left
+
+## labs 函数
+
+
+.left-code[
+```r
+# 定义映射标签
+labs(
+  ...,
+  title = waiver(),
+  subtitle = waiver(),
+  caption = waiver(),
+  tag = waiver(),
+  alt = waiver(),
+  alt_insight = waiver()
+)
+
+xlab(label)
+
+ylab(label)
+
+ggtitle(label, subtitle = waiver())
+```
+]
+
+.right-plot[
+```{r labs-ex, echo=F, fig.width=5, fig.height=3}
+g <- ggplot(table1) +
+  aes(x = year, y = population, color = country) +
+  geom_point() +
+  geom_line(aes(group = country))
+
+g + labs(x = "Year", y = "Population", title = 'g + labs(x = "Year", y = "Population")')
+```
+]
+
+---
+
+`r chunk_reveal("modifier_labs", width = c(45,54), font_size_code="80%", chunk_options="fig.height=5, cache=TRUE", title="#### 修改标签")`
+
+```{r modifier_labs, eval = F, echo = F}
+gapminder_2002 %>%
+    ggplot(aes(x=gdpPercap, y=lifeExp)) +
+    geom_point() +
+    labs(x = "GDP per cap") + 
+    labs(y = "Life Expectency") +
+    aes(color = continent) +
+    labs(color = "Continent") +
+    aes(shape = continent) +
+    labs(shape = "Continent") +
+    aes(size = gdpPercap) +
+    labs(size = "GDP per cap") +
+    aes(alpha = gdpPercap) +
+    labs(alpha = "GDP per cap") + 
+    labs(title = "GDP per Cap versus\nLife Expectancy in 2002") +
+    labs(subtitle = "Data: Gapminder Data in R") +
+    labs(caption = "图片来源: @EvaMaeRey") +
+    labs(tag = "Plot 1")
+```
+
+---
+
+
+class: top, left
+
+## coord 函数
+
+.left-code[
+```r
+# 改变坐标系
+coord_*(
+  xlim = NULL,
+  ylim = NULL,
+  expand = TRUE,
+  default = FALSE,
+  clip = "on"
+)
+```
+]
+
+.right-plot[
+```{r labs-flip, echo=F, fig.width=5, fig.height=3}
+g + coord_flip() + labs(title = 'g + coord_flip()')
+```
+]
+
+---
+
+`r chunk_reveal("modifier_axes", width = c(45,54), chunk_options="fig.height=5, cache=TRUE", title="#### 修改轴", break_type = "rotate")`
+
+```{r modifier_axes, eval = F, echo = F}
+ggplot(data = gapminder_2002) +
+  aes(x = gdpPercap) +
+  aes(y = lifeExp) +
+  geom_point() +
+  ## 默认是笛卡尔坐标系
+  coord_cartesian() + #ROTATE
+  ## 改成固定坐标系, 固定y/x的比例等于1
+  coord_equal() + #ROTATE
+  ## 改成固定坐标系, 固定y/x的比例等于400
+  coord_fixed(ratio = 400) + #ROTATE
+  ## 将x变成y, y变成x
+  coord_flip() + #ROTATE
+  ## 改成极地坐标系
+  coord_polar() + #ROTATE
+  theme_bw()
+```
+
+---
+
+class: top, left
+
+## scale 函数
+
+.right-column[ 
+`scale` + `_` + `<aes>` + `_` + `<type>` + `()`
+
+调整什么映射 → `<aes>` <br>
+这个映射的类型 → `<type>`
+]
+
+| Function                       | Description                                                  |
+|--------------------------------|--------------------------------------------------------------|
+| `scale_x_continuous()`         | 修改本身是连续变量的x轴           |
+| `scale_y_log10()`              | 本质上等于`scale_y_continuous(trans='log10')`           |
+| `scale_color_manual()`         | 自定义颜色           |
+| `scale_fill_gradient()`        | 自定义渐变填充色    |
+| `scale_shape_binned()`         | 将离散变量映射到六个易于辨别的形状      |
+| `scale_linetype_discrete()`    | 调整离散线条类型的设置          |
+
+---
+
+`r chunk_reveal("modifier_aes", width = c(45,54), chunk_options="fig.height=5, cache=TRUE", title="#### 修改映射")`
+
+```{r modifier_aes, eval = F, echo = F}
+ggplot(data = gapminder_2002) +
+  aes(x = gdpPercap) +
+  scale_x_continuous(trans = "log10") +  
+  aes(y = lifeExp) +
+  scale_y_continuous(breaks = c(50,70)) +  
+  geom_point() +
+  aes(color = continent) +
+  # 使用discrete viridis 调色板
+  scale_color_viridis_d() +
+  aes(size = gdpPercap) +
+  scale_size_continuous(limits = c(0, 400000)) +
+  aes(shape = continent) +
+  scale_shape_discrete(solid = FALSE) + 
+  aes(alpha = gdpPercap) +
+  scale_alpha(range = c(.4, .9))
+```
+
+---
+
+class: inverse, center, middle
+
+## `r fa('hourglass-end')`例子
+
+---
+
+`r chunk_reveal("example_1", width = c(45,54), font_size_code="80%", chunk_options="fig.height=5, cache=TRUE", title="#### 演示")`
+
+```{r example_1, echo=F, eval=F}
+ggplot(gapminder::gapminder) +
+    # 建立映射
+    aes(x = gdpPercap, y = lifeExp, size = pop, color = country) +
+    # 画散点图
+    geom_point() +
+    # 按照year分开
+    facet_wrap(~year) +
+    # 隐藏图例
+    guides(color = FALSE, shape = FALSE) +
+    # 调整x坐标轴
+    scale_x_log10(
+        breaks = c(10^3, 10^4, 10^5), 
+        labels = c("1k", "10k", "100k")
+    ) +
+    scale_color_manual(values = gapminder::country_colors) +
+    scale_size(range = c(0.5, 12)) +
+    # 添加x/y轴标题
+    labs(
+        x = "GDP per capita",
+        y = "Life Expectancy"
+    ) +
+    # 自定义: 子图标题, 边界等, 下节课学习
+    theme(
+        strip.text = element_text(size = 16, face = "bold"),
+        panel.border = element_rect(fill = NA, color = "grey40"),
+        panel.grid.minor = element_blank()
+    )
+```
+
+
+
+
+

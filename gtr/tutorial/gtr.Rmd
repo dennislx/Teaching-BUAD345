@@ -1,0 +1,79 @@
+---
+title: "Tutorial"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{js, echo=FALSE}
+var editor_font = "18px";   //修改代码区块的字体大小
+$(function() {
+   $('.ace_editor').each(function( index ) {
+     ace.edit(this).setFontSize(editor_font); 
+   });
+})
+```
+
+```{css, echo=FALSE}
+:root {
+    --body-font: 16px;      /*修改文本的字体大小*/
+}
+a:hover { color: red;  }
+body, .ace-tm {
+    /*font-family: "Ubuntu Mono", "NSimSun", "SimSun", "SimHei", monospace !important; */
+    font-size: var(--body-font) !important;
+}
+label { display: flex !important; align-items: center}
+label > span {padding-left: 5px; }
+label > input {top: unset !important; }
+.tutorialTitle { color: #91a01e; }
+h2 { color: #ed1f7f; font-size: 2em; }
+h3 { color: #005587; font-size: 1.5em; }
+details > summary { display: list-item; }
+details {
+    border: 1px solid #aaa;
+    border-radius: 0.2rem;
+    padding: 0.5em 0.5em 0;
+}
+div.two-col { display: flex;}
+div.two-col > div {flex: 50%; padding: 0 10px}
+```
+------------------------------------------------------------------------
+
+## 学习目标
+
+> - 如何合并数据表
+> - 如何长宽变换
+> - 如何合并/分割单元格
+
+</br>
+```{r setup}
+pacman::p_load(here)
+source(here(getwd(), 'www', 'setup.R'))
+```
+------------------------------------------------------------------------
+
+```{r my_cars, eval=FALSE, echo=FALSE}
+gtcars_small %>%
+    gt() %>%
+    cols_merge( 
+        columns = vars(mpg_c, mpg_h),
+        pattern = "{1}-{2}"
+    ) %>%
+    cols_label(
+        mpg_c = "Range",
+        ctry_origin = "Origin"
+    ) %>%
+    cols_move_to_start(
+        columns = vars(year)
+    ) %>%
+    cols_move(
+        columns = vars(ctry_origin),
+        after = vars(year)
+    )
+```
+
+`r embed_flipbook(chunk_name = "my_cars", last = TRUE)`
+
+dd
+
+

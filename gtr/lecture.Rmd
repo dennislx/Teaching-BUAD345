@@ -1,0 +1,457 @@
+---
+title: "如何使用.secondary[GT]作表"
+author: Xiang Liu
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    fig_caption: FALSE
+    includes:
+      after_body: style.html
+    css: [style.css]
+    nature:
+      titleSlideClass: [middle, center, inverse]
+      slideNumberFormat: "%current%"
+      highlightStyle: github
+      highlightLines: true
+      ratio: 16:9
+      countIncrementalSlides: true
+      countdown: 120000
+---
+
+```{r setup, include = FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+    fig.width=6, fig.height=3.5, fig.retina=3, out.width = "100%",
+    echo = TRUE, message = FALSE,  warning = FALSE, fig.show = TRUE,
+    hiline = TRUE, cache=FALSE, comment=""
+)
+pacman::p_load(formatR, fontawesome, xaringanExtra, flipbookr, tidyverse, gt, here)
+pacman::p_load_gh("hadley/emo")
+add_www <- function(file='.', cwd=getwd()) { here(cwd, 'www', file) }
+add_img <- function(x, ...){
+    if (length(list(...)) == 0){ knitr::include_graphics(add_www(x)) } 
+    else{ knitr::include_graphics(sapply(c(x, ...), FUN=add_www)) }
+}
+```
+
+```{r xaringan-extra, echo = FALSE}
+xaringanExtra::use_scribble()
+xaringanExtra::use_clipboard()
+xaringanExtra::use_tile_view()
+xaringanExtra::use_fit_screen()
+xaringanExtra::use_panelset()
+```
+
+```{r setup-data, include=FALSE}
+gtcars_small <- gtcars %>%
+    filter(ctry_origin %in% c("United States", "Japan")) %>%
+    select(mfr:year, mpg_c, mpg_h, ctry_origin, msrp)
+
+mtcars_small <- mtcars %>%
+    head() %>%
+    mutate(disp = c(NA, disp[2:6]), qsec = c(qsec[1:5], NA)) %>%
+    select(disp, hp, wt, qsec, carb)
+```
+
+---
+
+class: top, left
+
+## 修改列
+
+使用`cols_*()`函数, 可以帮助我们修改指定的列, 比如列标签, 对齐, 列宽和相对位置等
+
+.center[
+```{r, echo = FALSE, out.width="50%"}
+add_img("column.png")
+```
+]
+
+---
+
+`r chunk_reveal("my_cols", width = c(60,40), font_size_code = "80%")`
+
+```{r my_cols, include = FALSE}
+gtcars_small %>%
+    # 1. 创建一个表格对象
+    gt() %>%    
+    # 2. 合并第4, 第5行
+    cols_merge( 
+        columns = c(mpg_c, mpg_h),
+        pattern = "{1}-{2}"
+    ) %>%           
+    # 3. 更改列标签, 变量名没有边
+    cols_label(
+        mpg_c = md("**Range**"),
+        ctry_origin = html("<span style='color:blue;'>Origin</span>")
+    ) %>%
+    # 4. 将origin放到model后面, 这样文字的都在左边
+    cols_move(
+        columns = ctry_origin,
+        after = model
+    ) %>%
+    # 5. 调整对齐, 一般文字左对齐, 数字右对齐
+    cols_align(
+        align = "right",
+        columns = where(is.numeric)
+    ) %>%
+    # 6. 最后调整一下宽度, 把model由75调整到100
+    cols_width(
+        model ~ 100
+    )
+    
+```
+
+---
+
+class: top, left
+
+## 修改格式
+
+使用`fmt_*()`函数, 可以帮助我们给指定的行, 指定的列或者指定的单元格增加样式
+
+.center[
+```{r, echo = FALSE, out.width="50%"}
+add_img("format.png")
+```
+]
+
+
+---
+
+`r chunk_reveal("my_fmt", width = c(40,60), font_size_code = "80%")`
+
+```{r my_fmt, include = FALSE}
+gtcars_small %>%
+    gt() %>%
+    # 1. 将mpg_c精确到小数点后两位, suffixing
+    fmt_number(
+        columns = mpg_c,
+        decimals = 2,
+        suffixing = TRUE,
+    ) %>%
+    # 2. 将零售价用人民币标记, rows
+    fmt_currency(
+        columns = msrp,
+        decimals = 0,
+        rows = 1:3,
+        currency = "CNY", suffixing = TRUE) %>%
+    # 3. 将mpg_h, mpg_c用百分数表示, scale_values
+    fmt_percent(
+        columns = c(mpg_c, mpg_h),
+        decimals = 0,
+        scale_values = FALSE
+    ) %>%
+    # 4. 选取那些变量名带mpg的列, 将缺失值标记为 --
+    fmt_missing(
+        columns = contains("mpg")
+    )
+```
+
+???
+
+- disp: 排量,  wt: 重量, qsec: 百公里用时, carb: 气缸数量
+- suffixing=TRUE给大数字加单位, 这样就不会很长了
+- scale_values=FALSE表示这些数已经是百分数了
+
+---
+
+class: top, left
+
+## 修改行
+
+- 行标签(row names): 在`gt()`中通过指定`rowname_col`指定行标签, 
+- `tab_stubhead(label = )`会给行标签增加变量(列)名
+- 行分组(row groups): 类似于`dplyr::group_by`将数据表分成多个子数据表
+- `row_group_order(groups=)`指定分组呈现的先后顺序
+- `tab_row_group`自定义分组
+- `summary_rows`可以对分组结果进行统计, 会在组别最后一行新增一个或多个统计量
+- `grand_summary_rows`对整个数据表做统计
+
+
+---
+
+`r chunk_reveal("my_row", width = c(50,50), font_size_code = "80%")`
+
+```{r my_row, include = FALSE}
+gtcars_small %>%
+    # 1. 将生产地作为行标签 
+    gt( rowname_col = "ctry_origin" ) %>%
+    # 2. 先把价格转换为 xx k
+    fmt_number(msrp, suffixing = TRUE) %>%
+    # 2. 新增两个分组: 高油耗 vs 低油耗
+    tab_row_group(group = "Low Mpg", rows = mpg_c < 15) %>%
+    tab_row_group(group = "High Mpg", rows = mpg_c >= 15) %>%
+    # 3. 统计 mpg_c, mpg_h 的平均数
+    summary_rows(
+        columns = starts_with('mpg'),
+        fns = list(Total = ~mean(., na.rm=TRUE)),
+        fmt = ~ fmt_number(., decimals = 1)
+    ) %>%
+    # 4. 统计 mpg_c, mpg_h, msrp 的平均数
+    grand_summary_rows(
+        columns = c(starts_with('mpg'), msrp),
+        fns = list(Overall = ~mean(., na.rm=TRUE)),
+        fmt = ~ fmt_number(., decimals = 0, suffixing = TRUE)
+    )
+```
+
+---
+
+class: top, left
+
+## 标题, 多列标签, 脚注和表格注释
+
+使用`tab_*()`函数, 新增表格标题/副标题, 多列标签, 注释和脚注
+
+.pull-left[
+```{r, echo = FALSE}
+add_img("format.png")
+```
+]
+.pull-right[
+```{r, echo = FALSE}
+add_img("location.png")
+```
+]
+
+---
+
+`r chunk_reveal("my_title", width = c(50,50), font_size_code = "80%")`
+
+```{r my_title, include = FALSE}
+mtcars_small %>%
+    # 1. 新增一个行分组
+    gt(groupname_col = "carb") %>%
+    # 2. 添加标题/副标题, 不支持标题放在表格下方
+    tab_header(
+        title = "Title of this table",
+        subtitle = "this table describes xxx "
+    ) %>%
+    # 3. 添加一个多列标签, 这里把引擎相关的变量放到一起
+    tab_spanner(
+        label = "Engine",
+        columns = c(1:2, 4)
+    ) %>%
+    # 4. 添加一个表格说明
+    tab_source_note(
+        source_note = md("*Data Source*: this data is obtained via xxx")
+    ) %>%
+    # 5. 添加一个脚注, 请阅读 cells_column_labels 的相关文档
+    #    还有很多关于如何定位位置信息的函数
+    tab_footnote(
+        footnote = "Displacement in cubic inches",
+        location = cells_column_labels( columns = disp) 
+    )
+```
+---
+
+class: top, left
+
+## 样式和主题
+
+使用`opt_*()`函数或者`tab_options()`函数来定制表格样式, 或者直接用`gtExtra`这个库提供的主题
+
+```r
+pacman::p_load("gtExtras")
+gtExtras::gt_theme_538
+```
+你会发现这个函数是由很多`tabl_style`和`tab_options`构成的
+
+
+---
+
+## 样式和主题
+
+.pull-left[
+```{r, eval=FALSE}
+gtcars_small %>%
+    gt() %>%
+    tab_options( #<<
+        column_labels.border.top.color = "black", #<< 
+        column_labels.border.bottom.color = "black", #<< 
+        table_body.border.bottom.color = "black", #<< 
+        table_body.hlines.color = "white" #<< 
+    ) #<<
+```
+]
+
+.pull-right[
+```{r style1, cache=TRUE, echo=FALSE}
+gtcars_small %>%
+    gt() %>%
+    tab_options( #<<
+        column_labels.border.top.width = 3, #<< 
+        column_labels.border.top.color = "black", #<< 
+        column_labels.border.bottom.width = 3, #<< 
+        column_labels.border.bottom.color = "black", #<< 
+        table_body.border.bottom.width = 3, #<<
+        table_body.border.bottom.color = "black", #<< 
+        table_body.hlines.color = "white" #<< 
+    ) #<<
+```
+]
+
+---
+
+## 样式和主题
+
+.pull-left[
+Excel样式(请参考[gtExtra](https://jthomasmock.github.io/gtExtras/reference/index.html))
+
+```{r, eval=FALSE}
+gtcars_small %>%
+    gt() %>%
+    gtExtras::gt_theme_excel() #<<
+```
+]
+
+.pull-right[
+```{r style2, cache=TRUE, echo=FALSE}
+gtcars_small %>%
+    gt() %>%
+    gtExtras::gt_theme_excel() #<<
+```
+]
+
+---
+
+## 样式和主题
+
+你也可以自己创建主题, 比如这里我们创建一个APA主题
+
+<details>
+    <summary>APA样式</summary>
+```{r}
+theme_apa = function(table) {
+    table %>%
+        tab_options(table.border.top.color = "white", heading.title.font.size = px(16),
+            column_labels.border.top.width = 3, column_labels.border.top.color = "black",
+            column_labels.border.bottom.width = 3, column_labels.border.bottom.color = "black",
+            table_body.border.bottom.color = "black", table_body.border.bottom.width = 3,
+            table.border.bottom.color = "white", table.width = pct(100),
+            table.background.color = "white") %>%
+        cols_align(align = "center") %>%
+        tab_style(style = list(cell_borders(sides = c("top",
+            "bottom"), color = "white", weight = px(1)), cell_text(align = "center"),
+            cell_fill(color = "white", alpha = NULL)), locations = cells_body(columns = everything(),
+            rows = everything())) %>%
+        opt_align_table_header(align = "left")
+}
+```
+</detials>
+
+---
+
+## 样式和主题
+
+这样我们就不用把很长的代码写在一起了, 而且我们在工作中可以反复使用同一套样式
+
+.pull-left[
+```{r, eval=FALSE}
+gtcars_small %>%
+    gt() %>%
+    theme_apa() #<<
+```
+]
+
+.pull-right[
+```{r style3, cache=TRUE, echo=FALSE}
+gtcars_small %>%
+    gt() %>%
+    theme_apa() #<<
+```
+]
+
+---
+
+## 保存为图片
+
+我们可以将表格导出为图片或者`Latex`继续编辑
+
+
+先安装`phantomJS`
+
+```r
+webshot::install_phantomjs(version = "2.1.1", baseURL = "https://github.com/wch/webshot/releases/download/v0.3.1/", force = FALSE)
+```
+
+然后使用`gtsave`函数将其保存为`png, html, tex, rtf, docx`, 它会根据文件的后缀名自动识别算法来帮你进行格式转换
+
+```r
+gtcars_small %>%
+    gt() %>%
+    theme_apa() %>%
+    gtsave('tbl.png')
+```
+---
+
+## 保存为Tex
+
+如果你不想折腾去安装什么软件, 你也可以将其导出为latex格式, 然后在你的latex编辑器里渲染它
+
+
+.details[
+```{r}
+gtcars_small %>%
+    gt() %>%
+    theme_apa() %>%
+    as_latex() %>%
+    as.character()
+```
+]
+
+---
+
+## 上色
+
+有两种上色的办法
+
+1. 在`tab_style()`函数中, 使用`cell_fill`给单元格背景上色, 或者`cell_text(color=?)`给单元格内容上色
+
+
+2. 使用`data_color()`函数, 它有一个参数`apply_to`可以设置为`text`(单元格内容)或者`fill`(默认为单元格背景色)
+
+## 上色
+
+---
+
+`r chunk_reveal("my_color", width = c(60,40), font_size_code = "80%")`
+
+```{r my_color, include = FALSE}
+mtcars_small %>%
+    gt(groupname_col = "carb") %>%
+    data_color(
+        columns = disp, 
+        fn = scales::col_bin(
+            palette = c("orange", "grey54"), 
+            bins = c(100, 200, 300, 400)
+        )
+    ) %>%
+    data_color(
+        columns = hp, 
+        fn = scales::col_bin( palette = "viridis", domain=NULL), 
+        apply_to = "text"
+    ) %>%
+    tab_style(
+        style = cell_text( color = "red", weight = "bold"),
+        locations = cells_body( columns = wt )
+    ) %>%
+    tab_style(
+        style = cell_fill( color = "green", alpha = 0.2),
+        locations = cells_body( columns = qsec )
+    ) 
+```
+
+---
+
+## 参考
+
+[[1] Thomas Mock's gt Cookbook](https://themockup.blog/static/resources/gt-cookbook.html)
+
+[[2] Basic gt Styling Reference](https://adrumm.quarto.pub/basic-gt-styling-reference/)
+
+
+
+

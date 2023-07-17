@@ -1,0 +1,288 @@
+---
+title: "Tutorial"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{js, echo=FALSE}
+var editor_font = "18px";   //修改代码区块的字体大小
+$(function() {
+   $('.ace_editor').each(function( index ) {
+     ace.edit(this).setFontSize(editor_font); 
+   });
+})
+```
+
+```{css, echo=FALSE}
+:root {
+    --body-font: 16px;      /*修改文本的字体大小*/
+}
+a:hover { color: red;  }
+body, .ace-tm {
+    /*font-family: "Ubuntu Mono", "NSimSun", "SimSun", "SimHei", monospace !important; */
+    font-size: var(--body-font) !important;
+}
+label { display: flex !important; align-items: center}
+label > span {padding-left: 5px; }
+label > input {top: unset !important; }
+.tutorialTitle { color: #91a01e; }
+h2 { color: #ed1f7f; font-size: 2em; }
+h3 { color: #005587; font-size: 1.5em; }
+details > summary { display: list-item; }
+details {
+    border: 1px solid #aaa;
+    border-radius: 0.2rem;
+    padding: 0.5em 0.5em 0;
+}
+div.two-col { display: flex;}
+div.two-col > div {flex: 50%; padding: 0 10px}
+```
+------------------------------------------------------------------------
+
+## 学习目标
+
+> - 学习怎么做探索性数据分析
+> - 学习生成条形图, 直方图, 箱图, 散点图, 折线图
+> - 学习如何对图形进一步修改: 缩放, 标签, 注释, 主题, 颜色
+
+```{r setup, echo=FALSE}
+pacman::p_load(here)
+source(here(getwd(), 'www', 'setup.R'))
+
+R <- fa('r-project')
+E <- fa('vial-circle-check')
+Q <- fa('circle-question')
+p <- ggplot(diamonds) + geom_boxplot(mapping = aes(x = cut, y = price))
+g <- ggplot(data = diamonds, mapping = aes(x = carat, y = price)) +
+  geom_smooth(mapping = aes(color = cut), se = FALSE) 
+h <- ggplot(data = mpg) + 
+  geom_jitter(mapping = aes(x = displ, y = hwy, color = hwy)) +
+  theme_bw()
+```
+
+---
+
+
+## 探索性数据分析
+
+在画图之前你应该先对数据有基本的了解. 可视化基本解决两个问题: 1) 变量的分布; 2) 变量与变量之间的关系。前面我们在`tidyr`那个部分学过, 在画图前, 确保你画图中涉及的每一个数据点都在单独的单元格里, 每个变量有自己单独的列，每个观测有自己单独的行. 
+
+科学研究包含两个过程: 探索和假设检验. 首先我们通过探索性数据分析提出要被检验的假设. 然后，使用专门的统计工具来证实针对(没有见到过的)数据的假设是否依然成立. 所以我们学习可视化的一个重要目的就是发掘数据的特征并提出一堆基于可视化结果的假设
+
+### 数据分布
+
+首先我们要弄清涉及这个分布的变量是连续值还是离散值. 离散值在`r R`中一般是字符串类型(character)或者因子类型(factor). 而连续变量[^1]在`r R`中一般是数值型(numeric)或者时间类型(date-times)
+
+```{r, collapse=TRUE}
+mpg %>% glimpse()
+```
+
+```{r}
+mpg %>% ggplot() +
+  geom_bar(aes(x = class)) + 
+  labs(title="离散变量: 车型(class)") + 
+  scale_x_discrete(guide = guide_axis(angle = 45)) -> a
+
+mpg %>% ggplot() +
+  geom_histogram(aes(x = displ), binwidth = 0.1) + 
+  labs(title="连续变量: 发动机排量(displ)") -> b
+
+a + b
+```
+
+[^1]: 如果将连续变量的值进行排序, 任意两个数据点之间存在无限多个值, 例如0.9到1之间存在0.91, 0.99, 0.999等无限多个可能的值
+
+在上面的条形图(`geom_bar`)和直方图(`geom_histogram`)中, 注意y轴代表频次(count). 也就是说值越高, 代表某个或某些值(区间)出现的越频繁. 有了这个频次分布图, 我们可以提出以下问题: 
+
+1. 哪些值最常见, 为什么这样
+2. 哪些值比较稀有, 为什么这样
+3. 这个分布是否符合预期, 是否存在异常值, 即距离其他数据点比较远的点
+
+对于连续变量而言(x轴连续), 你可能会注意到分布具有一些明显的特征。
+
+```{r, echo = F}
+ggplot(data = faithful) +
+  geom_histogram(aes(x = eruptions), binwidth = 0.25) + 
+  labs(title="黄石公园 Old Faith 火山272次喷发的持续时间 (单位: 分钟)")
+```
+
+我们先搞清楚`x`和`y`轴分别代表什么, 这里`x`显示每次喷发的持续时间, 可以看到最短持续约一分钟，最长持续约五分钟. 然后`y`显示在某个时间范围内(例如2分钟-2分钟15秒)的观测次数, 或者说历史上有30次该火山喷发的持续时间在2分钟至2分钟15秒左右. 
+
+
+
+## 单变量
+
+### 条形图
+
+添加`geom_bar`图层到`ggplot()`对象中, 注意`+`而不是`%>%`
+
+```{r, fig.align='center'}
+ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut)) -> a
+
+count <- diamonds %>% count(cut)
+ggplot(data = count) + 
+  geom_bar(mapping = aes(x = cut, y = n), stat='identity') -> b
+
+ggplot(data = count) + 
+  geom_col(mapping = aes(x = cut, y =n)) -> c
+
+(a + b + c) + 
+  patchwork::plot_annotation( title = "不同钻石切工质量的计数分布")
+```
+
+如果你输入`?geom_bar`会发现
+
+```{r echo=FALSE, fig.align='center', out.width = "60%"}
+add_img('geom_bar.png')
+```
+
+也就是说你必须提供`x`轴和`y`轴的映射, `r R`才明白怎么作图. 可这里我们并没有指示`y`轴应该填入什么信息呀? 事实上它会在拿到`x`的信息后, 计算每一个`x`出现的次数, 并返回`after_stat(count)`作为`y`轴的默认值. 你也可以像右边这样先手动计数, 然后填入`x`和`y`轴的映射信息. 但你可能注意到我把`stat`参数由原来的`stat=count`换成了`stat=identity`. ggplot直接将后者封装成了`geom_col`函数
+
+`r E` 使用上面三种条形图方式画出不同钻石颜色的计数分布
+
+```{r bex1, exercise = TRUE}
+
+```
+
+```{r bex1-hint}
+ggplot(data = diamonds) + geom_bar(mapping = aes(x = color))
+```
+
+另外你可以通过`width`参数来控制每一个条块的宽度, 比如把之前的条形图换成`width=0.1`看一看结果发生了什么改变
+
+```{r bex2, exercise = TRUE}
+
+```
+
+```{r bex2-hint}
+ggplot(data = diamonds) + geom_bar(mapping = aes(x = color), width=0.1)
+```
+
+`r Q`: 想一想, 如果将`width = 0.1`写到`aes()`函数里会发生什么
+
+### AES
+
+在`geom_bar`和`geom_col`中你还可以通过设置不同的alpha(透明度), color(颜色), fill(填充色), linetype(线条形状), size(大小尺寸)来控制图形输出的样式
+
+```{r bex3, exercise = TRUE}
+# 用颜色区分不同切工
+ggplot(data = diamonds) + geom_bar(mapping = aes(x = cut, color = cut))
+```
+
+### Position参数
+
+前面讲了`width`参数能控制每一个条形块的宽度, `position`则能够控制同一个`x`却属于不同组别的条形块如何堆叠. 
+
+比如下面这四种堆叠方式: identity(重叠), fill(堆叠但顶部都是100%), stack(堆叠), dodge(并行排列)
+
+```{r, fig.align='center', fig.height=4}
+a <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='stack') + labs('stack') +
+  theme(legend.position = "none")
+b <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='dodge') + labs('dodge') +
+  theme(legend.position = "none")
+c <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='fill') + labs('fill') +
+  theme(legend.position = "none")
+d <- ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity), position='identity') + labs('identity') +
+  theme(legend.position = "none")
+
+((a + b) / (c + d)) + 
+  patchwork::plot_annotation( title = "不同纯度钻石的切工质量的计数分布")
+```
+
+`r E`: 如何复现下面这张图
+
+```{r, echo = F, fig.height=2}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color, fill = clarity), position = "fill")
+```
+
+```{r bex4, exercise = TRUE}
+
+```
+
+```{r bex4-solution}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color, fill = clarity), position = "fill")
+```
+
+### Facetting
+
+除了堆叠这种避免数据拥挤的方式外, 我们还可以制作子图来分割不同组别的数据. 你可以通过`facet_grid()`或`facet_wrap()`来分面. 
+
+- `facet_grid`通过`rows`和`cols`参数将图垂直分割为小平面, 每个特定的子图显示特定的行列组合
+- `facet_wrap()` 提供了一种更简单的方法对图进行分面, 它将把图分成子图，然后将子图重新组织成多行(通过`nrow`, `ncol`实现)
+
+`r E`: 按照纯度(行)-切工质量(列)制作不同钻石颜色的频数分布图, 注意引用变量使用`"变量名"`或者`vars(变量名)`
+
+```{r bex5, exercise = TRUE}
+
+```
+
+```{r bex5-solution}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color)) +
+  facet_grid(rows=vars(clarity), cols=vars(cut))
+```
+
+`r E`: 按照纯度制作不同钻石颜色的频数分布图, 要求使用`facet_wrap`函数实现
+
+```{r bex6, exercise = TRUE}
+
+```
+
+```{r bex6-solution}
+ggplot(data = diamonds) +
+  geom_bar(mapping = aes(x = color)) +
+  facet_wrap(vars(clarity))
+```
+
+### 直方图
+
+前面讲过, 条形图适用于统计离散变量的计数, 而直方图适用于连续变量的计数. 它本质上是通过`bin`函数统计每一个小区间里观测的数目, 然后问题就变成了之前学习的如何描绘离散变量的计数分布. 
+
+这些参数可以帮助你定义区间:
+
+- binwidth: 默认情况下, 会自动选择一个`binwidth`从而产生大约30个条形块
+- bins: 产生多少个条形块
+- boundary: 设置两个条形块之间的间距
+
+:::: two-col
+::: {}
+`r E`: 描绘不同切工质量的钻石价格计数分布, 产生50个条形块, 使用默认堆叠方式, 条形块间距为0
+:::
+::: {}
+```{r three-histogram, echo = FALSE}
+ggplot(data = diamonds) +
+  geom_histogram(mapping = aes(x = price, fill = cut), bins = 500, boundary = 0)
+```
+:::
+::::
+
+```{r bex7, exercise = TRUE}
+
+```
+
+现在这个图很难看出各个分布的形状, 我们可以使用堆叠的方式(position=dodge), 但还是太拥挤了. 除了分面以外, 我们还可以使用不同的几何图形显示不同切工钻石价格的分布. 
+
+- geom_freqpoly() 绘制频率多边形, 和直方图显示的信息一样, 只是用线条表示。等于用一条线连接每一个条形顶部. 注意我把AES从`fill`改成了`color`
+- geom_density() 绘制每个分布的核密度曲线, 相当于平滑的直方图. 统计指标不是用计数(count)而是密度(count/total)
+
+
+```{r, fig.height=2}
+ggplot(data = diamonds) +
+  geom_freqpoly(
+    mapping = aes(x = price, color = cut), binwidth = 500, boundary = 0
+  ) -> a
+
+ggplot(data = diamonds) +
+  geom_density(
+    mapping = aes(x = price, color = cut)
+  ) -> b
+
+(a + b) + patchwork::plot_annotation( title = "不同切工质量的钻石价格的计数分布")
+```
